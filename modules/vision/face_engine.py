@@ -12,7 +12,7 @@ class FaceEngine:
     Also provides live 5-sample enrollment quality checks (size, blur, lighting, single face).
     """
     def __init__(self, root_dir: Optional[str] = None):
-        self.root_dir = root_dir or str(Config.BASE_DIR / "data" / "insightface")
+        self.root_dir = root_dir or str(Config.DATA_DIR / "insightface")
         self.app = None
         self.active_provider = "CPU"
         self.is_gpu = False

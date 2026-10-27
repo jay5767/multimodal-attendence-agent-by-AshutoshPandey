@@ -1,15 +1,32 @@
 import os
+import tempfile
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
+
+def _resolve_data_dir() -> Path:
+    candidate = BASE_DIR / "data"
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        test_file = candidate / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+        return candidate
+    except Exception:
+        # Fallback to /tmp for serverless/read-only container environments (e.g. AWS Lambda / Vercel)
+        tmp_dir = Path(tempfile.gettempdir()) / "multimodal_attendance_data"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        return tmp_dir
+
+DATA_DIR = _resolve_data_dir()
 EXPORTS_DIR = DATA_DIR / "exports"
 MODELS_DIR = DATA_DIR / "models"
 
-# Ensure data folders exist
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-MODELS_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 class Config:
     BASE_DIR = BASE_DIR
