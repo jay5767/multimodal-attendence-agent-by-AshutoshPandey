@@ -1,0 +1,928 @@
+{% extends "base.html" %}
+
+{% block title %}Multimodal Attendance & Engagement Agent - AI Classroom{% endblock %}
+
+{% block content %}
+
+<script>
+  window.INITIAL_VIEW = "{{ initial_view|default('live') }}";
+</script>
+
+<!-- ========================================================================= -->
+<!-- 1. LIVE SESSION VIEW                                                      -->
+<!-- ========================================================================= -->
+<div id="view-live" class="app-view active">
+  <div class="section-hero">
+    <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 24px;">
+      <div style="background: #FFFFFF; padding: 6px 16px; border-radius: 12px; display: inline-flex; align-items: center; gap: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); border: 1px solid rgba(197, 248, 42, 0.4);">
+        <img src="/static/img/logo.jpg" alt="Agent Logo" style="height: 36px; width: auto; object-fit: contain;">
+        <span style="color: #0A0A0A; font-family: var(--font-heading); font-weight: 700; font-size: 14px; letter-spacing: 0.04em;">MULTIMODAL ATTENDANCE &amp; ENGAGEMENT AGENT</span>
+      </div>
+    </div>
+    <div class="pill-badge">
+      <span class="pill-dot"></span>
+      <span id="badge-session-state">{% if active_session %}Session Active{% else %}Live Ready{% endif %}</span>
+    </div>
+    <h1 class="hero-heading">
+      Track Attendance. Understand <span class="highlight">Engagement.</span>
+    </h1>
+    <p class="hero-sub">
+      Multi-sensor biometric observation running 100% offline. Automatically verifies sustained presence, 
+      evaluates visual attention and auditory interaction, and triggers assistive AI teaching interventions.
+    </p>
+    <div class="hero-cta">
+      <button class="btn btn-primary" id="btn-hero-session" onclick="toggleSessionModal()">
+        {% if active_session %}⏹ End Current Session{% else %}▶ Start Live Session{% endif %}
+      </button>
+      <button onclick="switchView('enrollment')" class="btn btn-secondary">
+        Enroll Students <span style="font-size: 16px;">&rarr;</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Stat Counter Cards -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-number lime" id="stat-present-count">{% if active_session %}{{ active_session.present_count }}{% else %}0{% endif %}</div>
+      <div class="stat-label">Students Present</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-engagement-avg">{% if active_session %}{{ active_session.avg_engagement }}%{% else %}75%{% endif %}</div>
+      <div class="stat-label">Class Engagement</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-session-timer">00:00</div>
+      <div class="stat-label">Session Elapsed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="stat-drop-count">0</div>
+      <div class="stat-label">Attention Drops</div>
+    </div>
+  </div>
+
+  <!-- Main Live Monitoring Layout -->
+  <div class="dashboard-grid">
+    <!-- Left: Live Video Card -->
+    <div class="video-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-weight: 700; color: #FFF;">Live Camera Ingestion</span>
+          <span class="hw-badge" id="camera-fps-badge">FPS: <span id="fps-val">0.0</span></span>
+          <span class="camera-source-pill" id="cam-active-source-badge">Integrated Cam (DSHOW)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <select id="camera-select" style="background: var(--bg-section); color: #FFF; border: var(--border-subtle); border-radius: 6px; padding: 4px 8px; font-size: 12px;"></select>
+          <button class="btn btn-secondary btn-sm" id="btn-toggle-cam" onclick="toggleCamera()">Pause Cam</button>
+          <button class="btn btn-secondary btn-sm" id="btn-switch-server-cam" onclick="toggleServerCameraMode()" title="Toggle Direct Server OpenCV Capture">
+            Server Direct Cam
+          </button>
+        </div>
+      </div>
+
+      <!-- Camera Status Banner & Error -->
+      <div id="camera-error" style="display: none; background: rgba(255, 92, 92, 0.15); border: 1px solid rgba(255, 92, 92, 0.35); color: #FF5C5C; padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; font-size: 12px;"></div>
+      <div id="camera-status-banner" style="background: rgba(197, 248, 42, 0.08); border: 1px solid rgba(197, 248, 42, 0.25); color: #C5F82A; padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+        <span class="hw-dot"></span> <span id="cam-status-msg">Live video feed ready. Physical Integrated Camera connected.</span>
+      </div>
+
+      <div class="video-container">
+        <video id="webcam-video" autoplay playsinline muted></video>
+        <img id="server-cam-feed" src="" alt="Server Video Stream" style="display: none; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);">
+        <canvas id="overlay-canvas"></canvas>
+      </div>
+
+      <div class="video-controls">
+        <div style="font-size: 13px; color: var(--text-muted);">
+          Detected Faces: <strong id="detected-face-count" style="color: #FFF;">0</strong> &bull; Gaze on Board: <strong id="board-gaze-count" style="color: var(--accent);">0</strong>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);">
+          <span>Audio State: <strong id="audio-state-text" style="color: #FFF;">Quiet</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Multimodal Circular Engagement Gauge -->
+    <div class="gauge-card">
+      <h3 style="font-size: 16px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Class Engagement</h3>
+      
+      <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+        <svg class="gauge-svg" viewBox="0 0 180 180">
+          <circle class="gauge-bg-circle" cx="90" cy="90" r="80"></circle>
+          <circle class="gauge-bar-circle" id="gauge-circle" cx="90" cy="90" r="80"></circle>
+        </svg>
+        <div class="gauge-center-text">
+          <div class="gauge-value" id="gauge-score">75%</div>
+          <div class="gauge-metric-label">Composite</div>
+        </div>
+      </div>
+
+      <!-- Sub-metrics Grid -->
+      <div style="width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; text-align: left;">
+        <div style="background: var(--bg-section); padding: 10px 14px; border-radius: 8px; border: var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Visual Attention</div>
+          <div style="font-size: 18px; font-weight: 700; color: #FFF;" id="metric-attention">80%</div>
+        </div>
+        <div style="background: var(--bg-section); padding: 10px 14px; border-radius: 8px; border: var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Physical Movement</div>
+          <div style="font-size: 18px; font-weight: 700; color: #FFF;" id="metric-movement">55%</div>
+        </div>
+        <div style="background: var(--bg-section); padding: 10px 14px; border-radius: 8px; border: var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Inactivity Time</div>
+          <div style="font-size: 18px; font-weight: 700; color: #FFF;" id="metric-inactivity">4.2s</div>
+        </div>
+        <div style="background: var(--bg-section); padding: 10px 14px; border-radius: 8px; border: var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Speech Ratio</div>
+          <div style="font-size: 18px; font-weight: 700; color: #FFF;" id="metric-audio">0.25</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Class Engagement Timeline (Real-Time Trend on Dashboard) -->
+  <div style="background: var(--bg-card); border: var(--border-subtle); border-radius: var(--radius-card); padding: 22px; margin-bottom: 32px; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span class="hw-dot"></span>
+        <h3 style="font-size: 17px; margin: 0; color: #FFF; font-weight: 700;">Live Class Engagement Timeline</h3>
+        <span style="font-size: 12px; color: var(--text-muted); background: var(--bg-section); padding: 3px 10px; border-radius: 999px; border: var(--border-subtle);">
+          Real-time updates &bull; <span style="color: #FF5C5C; font-weight: 700;">Red: Drops</span> &bull; <span style="color: var(--accent); font-weight: 700;">Lime: Peaks</span>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px; font-size: 13px;">
+        <span style="color: var(--text-muted);">Current Trend: <strong id="timeline-trend-badge" style="color: var(--accent);">Active Live Ingestion</strong></span>
+        <button onclick="switchView('analytics')" class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 12px;">Detailed Analytics &rarr;</button>
+      </div>
+    </div>
+    <div style="height: 180px; width: 100%; position: relative;">
+      <canvas id="dashboard-engagement-chart"></canvas>
+    </div>
+  </div>
+
+  <!-- Real-time Attendance Register -->
+  <div class="table-card">
+    <div class="table-header-box">
+      <div>
+        <h3 style="font-size: 18px;">Live Sustained Attendance</h3>
+        <p style="font-size: 13px; color: var(--text-muted);">Verified when student presence &ge; 70% over rolling 60s window.</p>
+      </div>
+      <div style="display: flex; gap: 12px;">
+        <button onclick="switchView('attendance')" class="btn btn-secondary btn-sm">Full Attendance View &rarr;</button>
+      </div>
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Roll No</th>
+          <th>Student Name</th>
+          <th>Status</th>
+          <th>Sustained Presence</th>
+          <th>First Seen</th>
+          <th>Last Seen</th>
+          <th>Presence Time</th>
+        </tr>
+      </thead>
+      <tbody id="live-attendance-tbody">
+        <tr>
+          <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">
+            No attendance data yet. Ensure camera is active and a session is started.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Real-Time AI Suggestions Feed -->
+  <div style="margin-top: 40px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <div>
+        <div class="pill-badge" style="margin-bottom: 6px;"><span class="pill-dot"></span> AI Teaching Assistant</div>
+        <h3 style="font-size: 24px;">Context-Aware Suggestions</h3>
+      </div>
+      <button onclick="switchView('insights')" class="btn btn-secondary btn-sm">All Insights &rarr;</button>
+    </div>
+
+    <div class="suggestions-grid" id="live-suggestions-container">
+      <div class="suggestion-card">
+        <div class="suggestion-meta">
+          <span class="suggestion-badge">Assistant Ready</span>
+          <span class="suggestion-time">Active</span>
+        </div>
+        <div class="suggestion-text">
+          AI companion initialized in decision-support mode. Real-time pedagogical recommendations will trigger automatically if classroom engagement drops over 20%.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- 2. ENROLLMENT VIEW                                                        -->
+<!-- ========================================================================= -->
+<div id="view-enrollment" class="app-view">
+  <div class="section-hero">
+    <div class="pill-badge">
+      <span class="pill-dot"></span>
+      Biometric Registry
+    </div>
+    <h1 class="hero-heading">
+      Enroll Students. Verify <span class="highlight">Embeddings.</span>
+    </h1>
+    <p class="hero-sub">
+      Register students via 5 live webcam samples. Only averaged, irreversible face embeddings are stored locally. 
+      Zero raw photos or video footage are ever saved to disk.
+    </p>
+    <div class="hero-cta">
+      <button class="btn btn-primary" onclick="openEnrollmentModal()">
+        + New Student Enrollment
+      </button>
+      <button class="btn btn-danger btn-sm" onclick="confirmDeleteAll()">
+        🗑 Delete All Biometric Data
+      </button>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="table-header-box">
+      <div>
+        <h3 style="font-size: 18px;">Enrolled Student Directory</h3>
+        <p style="font-size: 13px; color: var(--text-muted);"><span id="enrolled-count">Loading...</span> active students enrolled in local biometric database.</p>
+      </div>
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Roll Number</th>
+          <th>Student Name</th>
+          <th>Quality Samples</th>
+          <th>Enrolled At</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="students-tbody">
+        <tr>
+          <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px;">
+            Loading student directory...
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- 3. ATTENDANCE VIEW                                                        -->
+<!-- ========================================================================= -->
+<div id="view-attendance" class="app-view">
+  <div class="section-hero">
+    <div class="pill-badge">
+      <span class="pill-dot"></span>
+      Attendance Register
+    </div>
+    <h1 class="hero-heading">
+      Sustained Presence. Verified <span class="highlight">Attendance.</span>
+    </h1>
+    <p class="hero-sub">
+      Robust attendance logging. A student is marked PRESENT only when observed in &ge; 70% of frames 
+      over a continuous 60-second rolling window.
+    </p>
+    <div class="hero-cta" id="attendance-export-actions">
+      <button class="btn btn-primary" onclick="downloadActiveCSV()">
+        Download Active Session CSV &darr;
+      </button>
+      <button class="btn btn-secondary" onclick="openPrintableReport()">
+        Printable PDF Report &rarr;
+      </button>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="table-header-box">
+      <div>
+        <h3 style="font-size: 18px;">Attendance Roster</h3>
+        <p style="font-size: 13px; color: var(--text-muted);" id="attendance-roster-sub">Active session attendance register</p>
+      </div>
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Roll Number</th>
+          <th>Student Name</th>
+          <th>Status</th>
+          <th>Sustained Presence</th>
+          <th>First Seen</th>
+          <th>Last Seen</th>
+          <th>Total Presence Time</th>
+        </tr>
+      </thead>
+      <tbody id="full-attendance-tbody">
+        <tr>
+          <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 40px;">
+            No attendance records available. Start a session from the Live Session dashboard to begin tracking.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- 4. ANALYTICS VIEW                                                         -->
+<!-- ========================================================================= -->
+<div id="view-analytics" class="app-view">
+  <div class="section-hero">
+    <div class="pill-badge">
+      <span class="pill-dot"></span>
+      Classroom Telemetry
+    </div>
+    <h1 class="hero-heading">
+      Multimodal Signals. Deep <span class="highlight">Analytics.</span>
+    </h1>
+    <p class="hero-sub">
+      Temporal engagement timeline evaluated in 30-second intervals combining head pose orientation, 
+      landmark movement displacement, inactivity durations, and acoustic voice activity.
+    </p>
+  </div>
+
+  <div style="background: var(--bg-card); border: var(--border-subtle); border-radius: var(--radius-card); padding: 24px; margin-bottom: 30px;">
+    <div style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: 8px; font-weight: 700;">
+      Multimodal Fusion Formula (30s Interval)
+    </div>
+    <div style="font-family: var(--font-heading); font-size: 20px; color: #FFF; margin-bottom: 12px;">
+      Engagement = 0.35 &times; Attention + 0.25 &times; Movement + 0.20 &times; (1 &minus; Inactivity) + 0.20 &times; Audio
+    </div>
+    <p style="font-size: 13px; color: var(--text-muted); margin: 0;">
+      Drops are flagged when the 3-interval moving average falls &gt; 20% below the session baseline. 
+      Interaction peaks identify collaborative discussions and student responses.
+    </p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1fr; gap: 30px; margin-bottom: 40px;">
+    <div style="background: var(--bg-card); border: var(--border-subtle); border-radius: var(--radius-card); padding: 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+          <h3 style="font-size: 18px;">Class Engagement Timeline (30s Intervals)</h3>
+          <p style="font-size: 13px; color: var(--text-muted);">
+            Electric lime line with <span style="color: #FF5C5C; font-weight: 700;">red drop markers</span> and <span style="color: var(--accent); font-weight: 700;">interaction peak markers</span>.
+          </p>
+        </div>
+      </div>
+      <div style="height: 320px; width: 100%;">
+        <canvas id="engagement-chart"></canvas>
+      </div>
+    </div>
+
+    <div style="background: var(--bg-card); border: var(--border-subtle); border-radius: var(--radius-card); padding: 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+          <h3 style="font-size: 18px;">Acoustic Activity &amp; Speech Ratio</h3>
+          <p style="font-size: 13px; color: var(--text-muted);">Differentiates teacher monologue, collaborative discussion bursts, and silence.</p>
+        </div>
+      </div>
+      <div style="height: 240px; width: 100%;">
+        <canvas id="audio-chart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- 5. AI INSIGHTS VIEW                                                       -->
+<!-- ========================================================================= -->
+<div id="view-insights" class="app-view">
+  <div class="section-hero">
+    <div class="pill-badge">
+      <span class="pill-dot"></span>
+      AI Pedagogical Companion
+    </div>
+    <h1 class="hero-heading">
+      Context-Aware. Assistive <span class="highlight">Suggestions.</span>
+    </h1>
+    <p class="hero-sub">
+      Powered by local Ollama LLM (llama3.1:8b / phi3) with offline rule-engine fallback. 
+      Maintains a collaborative decision-support tone to help educators optimize classroom pacing and student responsiveness.
+    </p>
+  </div>
+
+  <div style="margin-bottom: 40px;">
+    <h3 style="font-size: 20px; margin-bottom: 16px;">Observation &amp; Intervention Pipeline</h3>
+    <div class="process-list">
+      <div class="process-row">
+        <div class="process-left">
+          <div class="process-num">01</div>
+          <div>
+            <div class="process-title">Continuous Multimodal Signal Fusion</div>
+            <div class="process-desc">Tracks gaze orientation to board, physical body movement, stillness intervals, and acoustic energy.</div>
+          </div>
+        </div>
+        <div class="process-arrow">&rarr;</div>
+      </div>
+      <div class="process-row">
+        <div class="process-left">
+          <div class="process-num">02</div>
+          <div>
+            <div class="process-title">Statistical Anomaly &amp; Drop Detection</div>
+            <div class="process-desc">Computes 3-interval moving averages; flags alerts when engagement falls &gt; 20% below rolling baseline.</div>
+          </div>
+        </div>
+        <div class="process-arrow">&rarr;</div>
+      </div>
+      <div class="process-row">
+        <div class="process-left">
+          <div class="process-num">03</div>
+          <div>
+            <div class="process-title">Assistive Pedagogical Recommendation</div>
+            <div class="process-desc">Local LLM generates actionable, non-prescriptive interventions (quick poll, peer discussion, stretch break).</div>
+          </div>
+        </div>
+        <div class="process-arrow">&rarr;</div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h3 style="font-size: 20px;">Session Insights Timeline</h3>
+    </div>
+    <div class="suggestions-grid" id="full-insights-container">
+      <div class="suggestion-card">
+        <div class="suggestion-meta">
+          <span class="suggestion-badge">Assistant Ready</span>
+          <span class="suggestion-time">Active</span>
+        </div>
+        <div class="suggestion-text">
+          No attention drops recorded yet. Insights will appear dynamically as class intervals unfold.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- 6. HISTORY VIEW                                                           -->
+<!-- ========================================================================= -->
+<div id="view-history" class="app-view">
+  <div class="section-hero">
+    <div class="pill-badge">
+      <span class="pill-dot"></span>
+      Historical Archive
+    </div>
+    <h1 class="hero-heading">
+      Classroom Sessions. Complete <span class="highlight">History.</span>
+    </h1>
+    <p class="hero-sub">
+      Browse all completed lectures, review class-wide engagement averages, and download CSV registers 
+      or printable pedagogical reports.
+    </p>
+  </div>
+
+  <div class="features-grid" id="history-cards-container">
+    <div style="grid-column: 1 / -1; background: var(--bg-card); border: var(--border-subtle); border-radius: var(--radius-card); padding: 50px; text-align: center; color: var(--text-muted);">
+      Loading session archive...
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- 7. TIME-TABLE & PERIOD ATTENTION TRACKER VIEW                            -->
+<!-- ========================================================================= -->
+<div id="view-timetable" class="app-view">
+  <!-- LNCT Hero & Real-Time Synchronized Clock Card -->
+  <div style="display:grid; grid-template-columns: 2fr 1fr; gap:24px; margin-bottom:32px;">
+    <!-- Timetable College & Department Info -->
+    <div class="card" style="background:var(--bg-card); border:var(--border-subtle); border-radius:var(--radius-card); padding:28px; position:relative; overflow:hidden;">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+        <span class="pill-badge" id="tt-active-badge">● LIVE: PERIOD II</span>
+        <span style="font-size:12px; color:var(--text-muted); font-family:var(--font-heading); letter-spacing:0.04em;">FM0902-A &bull; EFFECTIVE 06/10/2026</span>
+      </div>
+      <h2 style="font-size:26px; font-family:var(--font-heading); margin-bottom:8px; color:#FFF;">
+        Lakshmi Narain College of Technology, <span class="highlight">Bhopal</span>
+      </h2>
+      <p style="color:var(--text-muted); font-size:14px; margin-bottom:16px;">
+        Department of Computer Science &amp; Engineering <strong>(CSE AIML)</strong> &bull; B.Tech Vth Semester &bull; <strong>Section B</strong> &bull; Room 4-B9 (CV Raman Block)
+      </p>
+
+      <!-- Active Period Snapshot -->
+      <div style="background:var(--bg-section); border:1px solid rgba(197, 248, 42, 0.25); border-radius:12px; padding:18px; display:grid; grid-template-columns: repeat(4, 1fr); gap:16px;">
+        <div>
+          <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:4px;">Current Subject</div>
+          <div style="font-size:15px; font-weight:700; color:var(--accent);" id="tt-active-title">AL-501 Operating System</div>
+          <div style="font-size:11px; color:var(--text-muted);" id="tt-active-subcode">AL-501</div>
+        </div>
+        <div>
+          <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:4px;">Faculty In-Charge</div>
+          <div style="font-size:14px; font-weight:600; color:#FFF;" id="tt-active-faculty">Dr. Aakriti Jain (AJ)</div>
+          <div style="font-size:11px; color:var(--accent);" id="tt-active-contact">📞 7987622028</div>
+        </div>
+        <div>
+          <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:4px;">Room / Location</div>
+          <div style="font-size:14px; font-weight:600; color:#FFF;" id="tt-active-room">Room 4-B9 (CV Raman)</div>
+          <div style="font-size:11px; color:var(--text-muted);" id="tt-active-slot">11:15 - 12:00</div>
+        </div>
+        <div>
+          <div style="font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-bottom:4px;">Period Time Remaining</div>
+          <div style="font-size:16px; font-weight:700; color:var(--accent); font-family:var(--font-heading);" id="tt-active-remaining">28m 14s remaining</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Prominent Real-Time Digital Clock -->
+    <div class="card" style="background:linear-gradient(145deg, #1A1D1A 0%, #121412 100%); border:1px solid rgba(197, 248, 42, 0.3); border-radius:var(--radius-card); padding:28px; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+        <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 10px var(--accent);"></span>
+        <span style="font-size:12px; color:var(--accent); font-weight:700; text-transform:uppercase; letter-spacing:0.06em;">Real-Time Campus Clock</span>
+      </div>
+      <div id="tt-clock-time" style="font-size:38px; font-weight:700; font-family:var(--font-heading); color:#FFF; letter-spacing:0.04em; margin-bottom:6px; text-shadow:0 0 20px rgba(197, 248, 42, 0.25);">
+        10:30:00 AM
+      </div>
+      <div id="tt-clock-day" style="font-size:16px; font-weight:600; color:var(--accent); margin-bottom:2px;">
+        Wednesday
+      </div>
+      <div id="tt-clock-date" style="font-size:13px; color:var(--text-muted);">
+        28 October 2026
+      </div>
+      <div style="margin-top:14px; font-size:11px; color:rgba(255,255,255,0.4); border-top:1px solid rgba(255,255,255,0.08); padding-top:10px; width:100%;">
+        LNCT Time-Table Synchronization Active
+      </div>
+    </div>
+  </div>
+
+  <!-- "In this subject, how many students are paying attention" Spotlight Card -->
+  <div class="card" style="background:var(--bg-card); border:1px solid rgba(197, 248, 42, 0.35); border-radius:var(--radius-card); padding:28px; margin-bottom:32px; box-shadow:0 4px 24px rgba(197, 248, 42, 0.08);">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
+      <div>
+        <div class="pill-badge" style="margin-bottom:8px;">
+          <span class="pill-dot"></span> Real-Time Subject Attention Tracker
+        </div>
+        <h3 style="font-size:24px; font-family:var(--font-heading); color:#FFF;">
+          In this subject: <span style="color:var(--accent);" id="tt-paying-count">21</span> / <span id="tt-total-in-class">24</span> Students Paying Attention
+        </h3>
+        <p style="color:var(--text-muted); font-size:14px; margin-top:4px;">
+          Real-time attention verification derived from gaze direction, head pose, smartphone usage filtering, and physical engagement.
+        </p>
+      </div>
+
+      <div style="text-align:right;">
+        <div style="font-size:36px; font-weight:700; color:var(--accent); font-family:var(--font-heading);" id="tt-subject-att-rate">87.5%</div>
+        <div style="font-size:12px; color:var(--text-muted);">Overall Subject Focus Rate</div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div style="background:rgba(255,255,255,0.08); height:12px; border-radius:6px; overflow:hidden; margin-bottom:20px;">
+      <div id="tt-subject-att-bar" style="background:linear-gradient(90deg, #9AE600 0%, var(--accent) 100%); width:87.5%; height:100%; border-radius:6px; transition:width 0.4s ease;"></div>
+    </div>
+
+    <!-- Breakdown Pills -->
+    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px;">
+      <div style="background:var(--bg-section); padding:14px; border-radius:10px; border:1px solid rgba(255, 159, 28, 0.3); display:flex; align-items:center; gap:12px;">
+        <span style="font-size:24px;">📱</span>
+        <div>
+          <div style="font-size:18px; font-weight:700; color:#FF9F1C;" id="tt-subject-phone">2</div>
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Phone Distractions</div>
+        </div>
+      </div>
+
+      <div style="background:var(--bg-section); padding:14px; border-radius:10px; border:1px solid rgba(255, 92, 92, 0.3); display:flex; align-items:center; gap:12px;">
+        <span style="font-size:24px;">😴</span>
+        <div>
+          <div style="font-size:18px; font-weight:700; color:#FF5C5C;" id="tt-subject-sleep">0</div>
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Sleeping / Head Down</div>
+        </div>
+      </div>
+
+      <div style="background:var(--bg-section); padding:14px; border-radius:10px; border:1px solid rgba(245, 184, 61, 0.3); display:flex; align-items:center; gap:12px;">
+        <span style="font-size:24px;">👀</span>
+        <div>
+          <div style="font-size:18px; font-weight:700; color:#F5B83D;" id="tt-subject-away">1</div>
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Looking Away</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Period Simulator Bar -->
+  <div style="background:var(--bg-section); border:var(--border-subtle); border-radius:12px; padding:16px 20px; margin-bottom:28px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span style="color:var(--accent); font-weight:700; font-size:13px;">⚙️ Period Simulator:</span>
+      <span style="color:var(--text-muted); font-size:13px;">Test attention matching for any period or day:</span>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn btn-secondary btn-sm" onclick="simulatePeriod('MON', '11:30')">Mon: AL-501 OS (AJ)</button>
+      <button class="btn btn-secondary btn-sm" onclick="simulatePeriod('TUE', '10:45')">Tue: AL-502 DBMS (RSa)</button>
+      <button class="btn btn-secondary btn-sm" onclick="simulatePeriod('WED', '14:20')">Wed: AL-503 DL (CD)</button>
+      <button class="btn btn-secondary btn-sm" onclick="simulatePeriod('THU', '11:30')">Thu: AL-504 NLP (AK)</button>
+      <button class="btn btn-secondary btn-sm" onclick="simulatePeriod('FRI', '10:45')">Fri: AL-508 Lab</button>
+      <button class="btn btn-primary btn-sm" onclick="resetSimulation()">Reset to Live Clock</button>
+    </div>
+  </div>
+
+  <!-- Full Weekly Timetable Grid -->
+  <div class="card" style="background:var(--bg-card); border:var(--border-subtle); border-radius:var(--radius-card); padding:24px; margin-bottom:32px; overflow-x:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="font-size:18px; font-family:var(--font-heading); color:#FFF;">Weekly Timetable Schedule (Click any cell to inspect)</h3>
+      <div style="font-size:12px; color:var(--text-muted);">Section B &bull; Room 4-B9 &bull; Classes w.e.f. 06/10/2026</div>
+    </div>
+    <table style="width:100%; border-collapse:collapse; min-width:850px; text-align:center;">
+      <thead>
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.02);">
+          <th style="padding:12px; font-size:12px; color:var(--accent);">Day / Period</th>
+          <th style="padding:12px; font-size:12px; color:#FFF;">I<br><span style="font-size:10px; color:var(--text-muted);">10:30-11:15</span></th>
+          <th style="padding:12px; font-size:12px; color:#FFF;">II<br><span style="font-size:10px; color:var(--text-muted);">11:15-12:00</span></th>
+          <th style="padding:12px; font-size:12px; color:#FFF;">III<br><span style="font-size:10px; color:var(--text-muted);">12:00-12:45</span></th>
+          <th style="padding:12px; font-size:12px; color:#FFF;">IV<br><span style="font-size:10px; color:var(--text-muted);">12:45-01:25</span></th>
+          <th style="padding:12px; font-size:12px; color:var(--accent);">LUNCH<br><span style="font-size:10px; color:var(--text-muted);">01:25-02:10</span></th>
+          <th style="padding:12px; font-size:12px; color:#FFF;">VI<br><span style="font-size:10px; color:var(--text-muted);">02:10-02:50</span></th>
+          <th style="padding:12px; font-size:12px; color:#FFF;">VII<br><span style="font-size:10px; color:var(--text-muted);">02:50-03:30</span></th>
+          <th style="padding:12px; font-size:12px; color:#FFF;">VIII<br><span style="font-size:10px; color:var(--text-muted);">03:30-04:15</span></th>
+          <th style="padding:12px; font-size:12px; color:#FFF;">IX<br><span style="font-size:10px; color:var(--text-muted);">04:15-05:00</span></th>
+        </tr>
+      </thead>
+      <tbody id="tt-grid-body">
+        <!-- Dynamically rendered by timetable.js -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Subject Attention Comparison Cards -->
+  <div style="margin-bottom:32px;">
+    <h3 style="font-size:20px; font-family:var(--font-heading); margin-bottom:16px;">Subject-Wise Attention &amp; Focus Ranking</h3>
+    <div id="tt-subject-stats-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:16px;">
+      <!-- Dynamically filled with subject attention cards -->
+    </div>
+  </div>
+
+  <!-- Faculty & Laboratory Directory -->
+  <div class="card" style="background:var(--bg-card); border:var(--border-subtle); border-radius:var(--radius-card); padding:24px; margin-bottom:32px;">
+    <h3 style="font-size:18px; font-family:var(--font-heading); margin-bottom:16px;">LNCT Faculty &amp; Lab Directory (Section B)</h3>
+    <div id="tt-faculty-directory" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+      <!-- Dynamically populated -->
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- 8. ABOUT DEVELOPER VIEW (WITH USER PHOTO & LOGO)                          -->
+<!-- ========================================================================= -->
+<div id="view-about" class="app-view">
+  <!-- Developer Hero Card with Ashutosh's Photo -->
+  <div class="about-hero-grid">
+    <div class="developer-photo-wrap">
+      <img src="/static/img/ashutosh_photo.jpg" alt="Ashutosh Pandey" class="developer-photo-img">
+      <div class="developer-badge-overlay">
+        <span class="pill-dot"></span> Developed by Ashutosh Pandey
+      </div>
+    </div>
+
+    <div>
+      <div class="pill-badge">
+        <span class="pill-dot"></span>
+        AI &amp; Computer Vision Developer
+      </div>
+      <h1 class="hero-heading" style="font-size: 42px; margin-bottom: 12px;">
+        Ashutosh <span class="highlight">Pandey</span>
+      </h1>
+      <p style="font-size: 18px; color: var(--accent); font-weight: 600; margin-bottom: 8px;">
+        LNCT College &bull; Branch: <strong>CSE AIML</strong> &bull; Year: <strong>3rd Year</strong>
+      </p>
+      <p class="hero-sub" style="margin-bottom: 24px;">
+        Developer interested in AI, computer vision, and building practical, privacy-conscious software for modern education. 
+        Creator and architect of the Multimodal Attendance &amp; Engagement Agent.
+      </p>
+
+      <div class="hero-cta" style="flex-wrap: wrap;">
+        <a href="mailto:ashutoshpandey835797@gmail.com" class="btn btn-primary btn-sm">
+          ✉️ ashutoshpandey835797@gmail.com
+        </a>
+        <a href="https://github.com" target="_blank" class="btn btn-secondary btn-sm">
+          GitHub Profile &rarr;
+        </a>
+        <a href="https://linkedin.com" target="_blank" class="btn btn-secondary btn-sm">
+          LinkedIn &rarr;
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats Grid -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-number lime">100%</div>
+      <div class="stat-label">Offline &amp; Private</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">3rd Year</div>
+      <div class="stat-label">LNCT College, CSE AIML</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number lime">4 Signals</div>
+      <div class="stat-label">Multimodal Fusion</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">0 Cloud Calls</div>
+      <div class="stat-label">Edge Ingestion</div>
+    </div>
+  </div>
+
+  <!-- Skills Chips Section -->
+  <div style="background: var(--bg-card); border: var(--border-subtle); border-radius: var(--radius-card); padding: 28px; margin-bottom: 40px;">
+    <h3 style="font-size: 18px; margin-bottom: 6px;">Technical Competencies &amp; Skills</h3>
+    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Core development stack and domain proficiencies:</p>
+    
+    <div class="chips-wrap">
+      <div class="skill-chip">🐍 Python 3.11</div>
+      <div class="skill-chip">👁️ Computer Vision</div>
+      <div class="skill-chip">🌶️ Flask &amp; Socket.IO</div>
+      <div class="skill-chip">🧠 Machine Learning &amp; Deep Learning</div>
+      <div class="skill-chip">⚡ JavaScript (Vanilla ES6+)</div>
+      <div class="skill-chip">☕ Java</div>
+      <div class="skill-chip">🗄️ SQL &amp; SQLAlchemy</div>
+      <div class="skill-chip">🎯 MediaPipe &amp; InsightFace</div>
+      <div class="skill-chip">🦙 Ollama Local LLMs</div>
+    </div>
+  </div>
+
+  <!-- About The Project Cards -->
+  <div style="margin-bottom: 40px;">
+    <h3 style="font-size: 24px; margin-bottom: 20px;">About The Project</h3>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon-chip">🎯</div>
+        <h3 class="feature-title">Problem Statement</h3>
+        <p class="feature-desc">
+          Traditional roll-call attendance consumes instructional time and is prone to proxy marking. 
+          Meanwhile, instructors lack real-time feedback on collective cognitive attention and student fatigue during extended lectures.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon-chip">🚀</div>
+        <h3 class="feature-title">System Objectives</h3>
+        <p class="feature-desc">
+          1) Automated biometric attendance with sustained presence verification (&ge;70% over 60s).<br>
+          2) Real-time visual and acoustic engagement tracking.<br>
+          3) Context-aware assistive AI teaching interventions.<br>
+          4) Absolute privacy with zero raw video or audio persistence.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon-chip">⚙️</div>
+        <h3 class="feature-title">Full Tech Stack</h3>
+        <p class="feature-desc">
+          <strong>Vision:</strong> InsightFace (buffalo_l) ONNX CUDA/CPU + MediaPipe FaceMesh.<br>
+          <strong>Audio:</strong> sounddevice + WebRTC VAD + RMS energy.<br>
+          <strong>Backend:</strong> Python, Flask-SocketIO, SQLite.<br>
+          <strong>AI Agent:</strong> Local Ollama (llama3.1:8b) with heuristic rule fallback.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mini Architecture Flow -->
+  <div style="background: var(--bg-card); border: var(--border-subtle); border-radius: var(--radius-card); padding: 32px; margin-bottom: 40px;">
+    <h3 style="font-size: 20px; margin-bottom: 12px;">System Architecture Flow</h3>
+    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 24px;">End-to-end edge pipeline running entirely within the local classroom environment:</p>
+    
+    <div class="process-list">
+      <div class="process-row">
+        <div class="process-left">
+          <div class="process-num">01</div>
+          <div>
+            <div class="process-title">Hardware &amp; Client Ingestion</div>
+            <div class="process-desc">Integrated camera (DSHOW / getUserMedia) feeds video and audio chunks over low-latency WebSocket.</div>
+          </div>
+        </div>
+        <div class="process-arrow">&rarr;</div>
+      </div>
+      <div class="process-row">
+        <div class="process-left">
+          <div class="process-num">02</div>
+          <div>
+            <div class="process-title">Dual-Stream Feature Extraction</div>
+            <div class="process-desc">Vision tracks faces, extracts 512-d embeddings and head pose; Audio detects speech activity and RMS loudness.</div>
+          </div>
+        </div>
+        <div class="process-arrow">&rarr;</div>
+      </div>
+      <div class="process-row">
+        <div class="process-left">
+          <div class="process-num">03</div>
+          <div>
+            <div class="process-title">Sustained Attendance &amp; Multimodal Fusion</div>
+            <div class="process-desc">Evaluates 60s rolling presence &ge;70% and calculates engagement = 0.35*Att + 0.25*Mov + 0.20*(1-Inact) + 0.20*Aud.</div>
+          </div>
+        </div>
+        <div class="process-arrow">&rarr;</div>
+      </div>
+      <div class="process-row">
+        <div class="process-left">
+          <div class="process-num">04</div>
+          <div>
+            <div class="process-title">Edge AI Intervention &amp; Reporting</div>
+            <div class="process-desc">Flags drops &gt;20%, invokes local Ollama agent, updates live dashboard, and compiles CSV/HTML reports.</div>
+          </div>
+        </div>
+        <div class="process-arrow">&rarr;</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- MODALS                                                                    -->
+<!-- ========================================================================= -->
+<!-- 5-Sample Enrollment Modal -->
+<div id="enrollment-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:999; align-items:center; justify-content:center; overflow-y:auto; padding:20px;">
+  <div style="background:var(--bg-card); border:var(--border-subtle); border-radius:var(--radius-card); padding:32px; width:680px; max-width:95%;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="font-size:22px;">Enroll Student Biometrics</h3>
+      <button onclick="closeEnrollmentModal()" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer;">&times;</button>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:20px;">
+      <div>
+        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase;">Student Full Name</label>
+        <input type="text" id="enroll-name" placeholder="e.g. Ashutosh Pandey" style="width:100%; padding:10px 14px; background:var(--bg-section); border:var(--border-subtle); border-radius:8px; color:#FFF; font-family:var(--font-body);">
+      </div>
+      <div>
+        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase;">Roll Number / Student ID</label>
+        <input type="text" id="enroll-roll" placeholder="e.g. 0103CS211045" style="width:100%; padding:10px 14px; background:var(--bg-section); border:var(--border-subtle); border-radius:8px; color:#FFF; font-family:var(--font-body);">
+      </div>
+    </div>
+
+    <div style="position:relative; width:100%; aspect-ratio:4/3; background:#000; border-radius:12px; overflow:hidden; margin-bottom:16px;">
+      <video id="enroll-video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
+      <canvas id="enroll-canvas" style="display:none;"></canvas>
+      <div id="enroll-quality-pill" style="position:absolute; bottom:12px; left:12px; background:rgba(0,0,0,0.75); backdrop-filter:blur(6px); padding:6px 14px; border-radius:var(--radius-pill); font-size:12px; border:1px solid rgba(255,255,255,0.15);">
+        Evaluating frame quality...
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:20px; font-size:12px;">
+      <div id="gate-single" style="background:var(--bg-section); padding:8px 12px; border-radius:6px; border:var(--border-subtle); text-align:center;">
+        <span id="gate-single-icon">⏳</span> Single Face
+      </div>
+      <div id="gate-size" style="background:var(--bg-section); padding:8px 12px; border-radius:6px; border:var(--border-subtle); text-align:center;">
+        <span id="gate-size-icon">⏳</span> Face Size
+      </div>
+      <div id="gate-blur" style="background:var(--bg-section); padding:8px 12px; border-radius:6px; border:var(--border-subtle); text-align:center;">
+        <span id="gate-blur-icon">⏳</span> Sharpness
+      </div>
+      <div id="gate-light" style="background:var(--bg-section); padding:8px 12px; border-radius:6px; border:var(--border-subtle); text-align:center;">
+        <span id="gate-light-icon">⏳</span> Lighting
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <div class="sample-slot" id="slot-1" style="width:36px; height:36px; border-radius:50%; background:var(--bg-section); border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">1</div>
+        <div class="sample-slot" id="slot-2" style="width:36px; height:36px; border-radius:50%; background:var(--bg-section); border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">2</div>
+        <div class="sample-slot" id="slot-3" style="width:36px; height:36px; border-radius:50%; background:var(--bg-section); border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">3</div>
+        <div class="sample-slot" id="slot-4" style="width:36px; height:36px; border-radius:50%; background:var(--bg-section); border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">4</div>
+        <div class="sample-slot" id="slot-5" style="width:36px; height:36px; border-radius:50%; background:var(--bg-section); border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">5</div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <input type="file" id="enroll-photo-input" accept="image/*" style="display:none;" onchange="handlePhotoUpload(event)">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="triggerPhotoUpload()" title="Upload a photo from your computer">📸 Upload Photo</button>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-auto-capture" onclick="autoCapture5Samples()" title="Capture all 5 samples automatically in 1.5 seconds">⚡ Auto-Capture 5 Samples</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-capture-sample" onclick="captureSample()">Capture Single (<span id="sample-count-badge">0</span>/5)</button>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:12px; border-top:var(--border-subtle); padding-top:16px;">
+      <button class="btn btn-secondary btn-sm" onclick="closeEnrollmentModal()">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="btn-save-enrollment" onclick="saveEnrollment()">Complete &amp; Save Embeddings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Student Modal -->
+<div id="edit-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:999; align-items:center; justify-content:center;">
+  <div style="background:var(--bg-card); border:var(--border-subtle); border-radius:var(--radius-card); padding:28px; width:400px; max-width:90%;">
+    <h3 style="margin-bottom:16px;">Edit Student Record</h3>
+    <input type="hidden" id="edit-student-id">
+    <div style="margin-bottom:14px;">
+      <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px;">Name</label>
+      <input type="text" id="edit-student-name" style="width:100%; padding:10px; background:var(--bg-section); border:var(--border-subtle); border-radius:8px; color:#FFF;">
+    </div>
+    <div style="margin-bottom:20px;">
+      <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px;">Roll Number</label>
+      <input type="text" id="edit-student-roll" style="width:100%; padding:10px; background:var(--bg-section); border:var(--border-subtle); border-radius:8px; color:#FFF;">
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:10px;">
+      <button class="btn btn-secondary btn-sm" onclick="closeEditModal()">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveStudentEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/chart-utils.js"></script>
+<script src="/static/js/enrollment.js"></script>
+{% endblock %}

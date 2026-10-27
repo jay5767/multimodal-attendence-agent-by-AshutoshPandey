@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance Records - Multimodal Attendance & Engagement Agent{% endblock %}
+
+{% block content %}
+<div class="section-hero">
+  <div class="pill-badge">
+    <span class="pill-dot"></span>
+    Attendance Register
+  </div>
+  <h1 class="hero-heading">
+    Sustained Presence. Verified <span class="highlight">Attendance.</span>
+  </h1>
+  <p class="hero-sub">
+    Robust attendance logging. A student is marked PRESENT only when observed in &ge; 70% of frames 
+    over a continuous 60-second rolling window. Automatic Absent marking at session conclusion.
+  </p>
+  <div class="hero-cta">
+    {% if active_session %}
+    <a href="/reports/session/{{ active_session.id }}/csv" class="btn btn-primary">
+      Download Active Session CSV &darr;
+    </a>
+    <a href="/reports/session/{{ active_session.id }}/html" target="_blank" class="btn btn-secondary">
+      Printable PDF Report &rarr;
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="table-card">
+  <div class="table-header-box">
+    <div>
+      <h3 style="font-size: 18px;">Attendance Roster</h3>
+      <p style="font-size: 13px; color: var(--text-muted);">
+        {% if active_session %}
+          Session: <strong>{{ active_session.name }}</strong> ({{ active_session.subject }})
+        {% else %}
+          Historical Attendance Log
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Roll Number</th>
+        <th>Student Name</th>
+        <th>Status</th>
+        <th>Sustained Presence</th>
+        <th>First Seen</th>
+        <th>Last Seen</th>
+        <th>Total Presence Time</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if records %}
+        {% for r in records %}
+        <tr>
+          <td><strong>{{ r.roll_number }}</strong></td>
+          <td>{{ r.student_name }}</td>
+          <td>
+            {% if r.status == "Present" %}
+              <span class="status-chip present">● Present</span>
+            {% elif r.status == "Late" %}
+              <span class="status-chip late">● Late</span>
+            {% elif r.status == "Partial" %}
+              <span class="status-chip partial">● Partial</span>
+            {% else %}
+              <span class="status-chip absent">● Absent</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.sustained_verified %}
+              <span style="color: var(--accent); font-weight:600;">✓ Verified (&ge; 70%)</span>
+            {% else %}
+              <span style="color: var(--text-dim);">Unverified</span>
+            {% endif %}
+          </td>
+          <td>{{ r.first_seen }}</td>
+          <td>{{ r.last_seen }}</td>
+          <td>{{ (r.total_presence_seconds / 60.0)|round(1) }} min</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 40px;">
+            No attendance records available. Start a session from the Live Session dashboard to begin tracking.
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Multimodal Attendance & Engagement Agent{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="/static/js/socket.io.min.js"></script>
+  <script src="/static/js/chart.min.js"></script>
+  <script src="/static/js/timetable.js"></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+  <!-- Top Navbar -->
+  <nav class="navbar">
+    <a href="javascript:void(0)" onclick="switchView('live')" class="nav-brand">
+      <div class="brand-logo-box">
+        <img src="/static/img/logo.jpg" alt="Multimodal Agent Logo" class="brand-logo-img">
+      </div>
+      <span>AI <span class="highlight" style="color:var(--accent);">CLASSROOM</span></span>
+    </a>
+
+    <ul class="nav-links">
+      <li><a href="javascript:void(0)" onclick="switchView('live')" class="nav-link active" id="nav-item-live">Live Session</a></li>
+      <li><a href="javascript:void(0)" onclick="switchView('timetable')" class="nav-link" id="nav-item-timetable">Time-Table</a></li>
+      <li><a href="javascript:void(0)" onclick="switchView('enrollment')" class="nav-link" id="nav-item-enrollment">Enrollment</a></li>
+      <li><a href="javascript:void(0)" onclick="switchView('attendance')" class="nav-link" id="nav-item-attendance">Attendance</a></li>
+      <li><a href="javascript:void(0)" onclick="switchView('analytics')" class="nav-link" id="nav-item-analytics">Analytics</a></li>
+      <li><a href="javascript:void(0)" onclick="switchView('insights')" class="nav-link" id="nav-item-insights">AI Insights</a></li>
+      <li><a href="javascript:void(0)" onclick="switchView('history')" class="nav-link" id="nav-item-history">History</a></li>
+      <li><a href="javascript:void(0)" onclick="switchView('about')" class="nav-link" id="nav-item-about">About</a></li>
+    </ul>
+
+    <div class="nav-actions">
+      <!-- Real-Time Digital Clock Badge -->
+      <div class="realtime-clock-badge" id="nav-digital-clock" title="LNCT Campus Synchronized Clock" style="display:flex; align-items:center; gap:8px; background:var(--bg-card); border:1px solid rgba(197, 248, 42, 0.35); padding:6px 14px; border-radius:var(--radius-pill); font-family:var(--font-heading); font-size:13px; color:#FFF; box-shadow:0 0 10px rgba(197, 248, 42, 0.1);">
+        <span style="color:var(--accent); font-size:9px;">●</span>
+        <span id="clock-day-date" style="color:var(--text-muted); font-size:12px; font-weight:500;">--</span>
+        <span id="clock-time" style="font-weight:700; color:var(--accent); letter-spacing:0.04em;">--:--:--</span>
+      </div>
+
+      <!-- Hardware Acceleration Badge -->
+      <div class="hw-badge {% if hardware and hardware.is_gpu %}gpu{% endif %}" id="hw-badge" title="Vision Inference Engine">
+        <span class="hw-dot"></span>
+        <span id="hw-provider-text">{% if hardware %}{{ hardware.provider }}{% else %}CPU{% endif %}</span>
+      </div>
+
+      <!-- Anonymous Mode Toggle -->
+      <button class="btn btn-secondary btn-sm" id="btn-anon-toggle" onclick="toggleAnonymousMode()" title="Toggle Anonymous Mode (Mask Names)">
+        <span id="anon-label">{% if anonymous %}🔒 Anon: ON{% else %}👁️ Anon: OFF{% endif %}</span>
+      </button>
+
+      <!-- Session CTA -->
+      <button class="btn btn-primary btn-sm" id="nav-session-btn" onclick="toggleSessionModal()">
+        {% if active_session %}⏹ Stop Session{% else %}▶ Start Session{% endif %}
+      </button>
+    </div>
+  </nav>
+
+  <!-- Live Marquee Ticker Strip -->
+  <div class="marquee-strip">
+    <div class="marquee-content">
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span class="marquee-highlight">OFFLINE & SECURE</span></div>
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span id="ticker-session-status">{% if active_session %}LIVE SESSION: {{ active_session.name }}{% else %}NO ACTIVE SESSION{% endif %}</span></div>
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span id="ticker-present-count">{% if active_session %}{{ active_session.present_count }} PRESENT{% else %}0 PRESENT{% endif %}</span></div>
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span id="ticker-engagement">ENGAGEMENT: <span id="ticker-eng-val">{% if active_session %}{{ active_session.avg_engagement }}%{% else %}75%{% endif %}</span></span></div>
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span>NO RAW VIDEO STORED</span></div>
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span class="marquee-highlight">DEVELOPED BY ASHUTOSH PANDEY</span></div>
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span>LNCT COLLEGE &bull; CSE AIML</span></div>
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span class="marquee-highlight">ZERO CLOUD CALLS</span></div>
+
+      <!-- Repeat items for continuous loop -->
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span class="marquee-highlight">OFFLINE & SECURE</span></div>
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span>SUSTAINED PRESENCE VERIFIED</span></div>
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span>HEAD POSE & AUDIO FUSION</span></div>
+      <div class="marquee-item"><span class="marquee-sep">+</span> <span class="marquee-highlight">LOCAL OLLAMA AI ASSISTANT</span></div>
+    </div>
+  </div>
+
+  <!-- Privacy Consent Banner -->
+  <div class="main-content" style="padding-bottom: 0;">
+    <div class="consent-banner" id="consent-banner">
+      <div class="consent-text">
+        🔒 <strong>Offline Privacy Guarantee:</strong> All biometric processing is performed strictly on your local device. 
+        Zero raw video or audio recordings are saved or transmitted. Only non-reversible face embeddings and aggregated engagement metrics are stored.
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="dismissConsent()">Acknowledge</button>
+    </div>
+  </div>
+
+  <!-- Main Body Content -->
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Global Footer -->
+  <footer style="border-top: var(--border-subtle); padding: 30px 40px; margin-top: auto; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--text-muted);">
+    <div>Developed by <strong>Ashutosh Pandey</strong> &bull; LNCT College &bull; CSE AIML 3rd Year</div>
+    <div>Multimodal Attendance & Engagement Agent &bull; 100% Offline AI Classroom</div>
+  </footer>
+
+  <!-- Start Session Modal -->
+  <div id="session-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:999; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-card); border:var(--border-subtle); border-radius:var(--radius-card); padding:32px; width:450px; max-width:90%;">
+      <h3 style="margin-bottom:12px; font-size:22px;">Start New Session</h3>
+      <p style="color:var(--text-muted); font-size:14px; margin-bottom:20px;">Initialize classroom tracking, attendance verification, and multimodal engagement analytics.</p>
+      
+      <div style="margin-bottom:16px;">
+        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Session Name</label>
+        <input type="text" id="modal-session-name" placeholder="e.g. CS-402 Computer Vision Lecture" style="width:100%; padding:10px 14px; background:var(--bg-section); border:var(--border-subtle); border-radius:8px; color:#FFF; font-family:var(--font-body);">
+      </div>
+
+      <div style="margin-bottom:24px;">
+        <label style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:6px;">Subject / Course</label>
+        <input type="text" id="modal-session-subject" placeholder="e.g. Artificial Intelligence" style="width:100%; padding:10px 14px; background:var(--bg-section); border:var(--border-subtle); border-radius:8px; color:#FFF; font-family:var(--font-body);">
+      </div>
+
+      <div style="margin-bottom:20px; background:var(--bg-section); border:1px solid rgba(197, 248, 42, 0.25); padding:10px 14px; border-radius:8px;">
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; color:#FFF;">
+          <input type="checkbox" id="session-auto-timetable" checked style="accent-color:var(--accent); width:16px; height:16px;">
+          <span>Bind to timetable: <strong id="modal-current-period-name" style="color:var(--accent);">AL-501 Operating System</strong></span>
+        </label>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:12px;">
+        <button class="btn btn-secondary btn-sm" onclick="closeSessionModal()">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="submitStartSession()">Start Recording</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/main.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

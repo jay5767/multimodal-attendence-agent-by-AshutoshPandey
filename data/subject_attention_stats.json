@@ -1,0 +1,102 @@
+{
+  "AL-501": {
+    "subject": "Operating System",
+    "faculty": "Dr. Aakriti Jain",
+    "total_frames": 2935,
+    "attentive_frames": 1471,
+    "attention_rate": 50.1,
+    "distracted_phone": 920,
+    "distracted_sleep": 4,
+    "distracted_away": 1257
+  },
+  "AL-502": {
+    "subject": "Database Management System",
+    "faculty": "Prof. Richa Sarathe",
+    "total_frames": 1380,
+    "attentive_frames": 1118,
+    "attention_rate": 81.0,
+    "distracted_phone": 19,
+    "distracted_sleep": 7,
+    "distracted_away": 26
+  },
+  "AL-503": {
+    "subject": "Deep Learning",
+    "faculty": "Prof. Chayank Deshmukh",
+    "total_frames": 1560,
+    "attentive_frames": 1370,
+    "attention_rate": 87.8,
+    "distracted_phone": 11,
+    "distracted_sleep": 2,
+    "distracted_away": 15
+  },
+  "AL-504": {
+    "subject": "Natural Language Processing",
+    "faculty": "Prof. Arbind Kumar Singh",
+    "total_frames": 1290,
+    "attentive_frames": 1083,
+    "attention_rate": 84.0,
+    "distracted_phone": 15,
+    "distracted_sleep": 5,
+    "distracted_away": 18
+  },
+  "AL-505": {
+    "subject": "Deep Learning Lab",
+    "faculty": "Prof. Chayank Deshmukh",
+    "total_frames": 980,
+    "attentive_frames": 880,
+    "attention_rate": 89.8,
+    "distracted_phone": 8,
+    "distracted_sleep": 1,
+    "distracted_away": 9
+  },
+  "AL-506": {
+    "subject": "NLP Lab",
+    "faculty": "Prof. Arbind Kumar Singh",
+    "total_frames": 920,
+    "attentive_frames": 815,
+    "attention_rate": 88.6,
+    "distracted_phone": 9,
+    "distracted_sleep": 2,
+    "distracted_away": 8
+  },
+  "AL-507": {
+    "subject": "Internship Evaluation",
+    "faculty": "Prof. Nandita Tiwari",
+    "total_frames": 850,
+    "attentive_frames": 748,
+    "attention_rate": 88.0,
+    "distracted_phone": 6,
+    "distracted_sleep": 1,
+    "distracted_away": 9
+  },
+  "AL-508": {
+    "subject": "Minor Project-I",
+    "faculty": "Prof. Richa Sarathe",
+    "total_frames": 1100,
+    "attentive_frames": 990,
+    "attention_rate": 90.0,
+    "distracted_phone": 7,
+    "distracted_sleep": 0,
+    "distracted_away": 8
+  },
+  "Mentor/Library": {
+    "subject": "Mentor / Library",
+    "faculty": "Dr. Aakriti Jain",
+    "total_frames": 740,
+    "attentive_frames": 592,
+    "attention_rate": 80.0,
+    "distracted_phone": 18,
+    "distracted_sleep": 6,
+    "distracted_away": 14
+  },
+  "Minor Project Lab": {
+    "subject": "Minor Project Lab Work",
+    "faculty": "Prof. Richa Sarathe",
+    "total_frames": 1200,
+    "attentive_frames": 1092,
+    "attention_rate": 91.0,
+    "distracted_phone": 5,
+    "distracted_sleep": 1,
+    "distracted_away": 6
+  }
+}

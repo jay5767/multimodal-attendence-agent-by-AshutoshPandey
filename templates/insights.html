@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}AI Insights - Multimodal Attendance & Engagement Agent{% endblock %}
+
+{% block content %}
+<div class="section-hero">
+  <div class="pill-badge">
+    <span class="pill-dot"></span>
+    AI Pedagogical Companion
+  </div>
+  <h1 class="hero-heading">
+    Context-Aware. Assistive <span class="highlight">Suggestions.</span>
+  </h1>
+  <p class="hero-sub">
+    Powered by local Ollama LLM (llama3.1:8b / phi3) with offline rule-engine fallback. 
+    Maintains a collaborative decision-support tone to help educators optimize classroom pacing and student responsiveness.
+  </p>
+</div>
+
+<!-- Process Rows: AI Suggestion Triggers -->
+<div style="margin-bottom: 40px;">
+  <h3 style="font-size: 20px; margin-bottom: 16px;">Observation &amp; Intervention Pipeline</h3>
+  <div class="process-list">
+    <div class="process-row">
+      <div class="process-left">
+        <div class="process-num">01</div>
+        <div>
+          <div class="process-title">Continuous Multimodal Signal Fusion</div>
+          <div class="process-desc">Tracks gaze orientation to board, physical body movement, stillness intervals, and acoustic energy.</div>
+        </div>
+      </div>
+      <div class="process-arrow">&rarr;</div>
+    </div>
+    <div class="process-row">
+      <div class="process-left">
+        <div class="process-num">02</div>
+        <div>
+          <div class="process-title">Statistical Anomaly &amp; Drop Detection</div>
+          <div class="process-desc">Computes 3-interval moving averages; flags alerts when engagement falls &gt; 20% below rolling baseline.</div>
+        </div>
+      </div>
+      <div class="process-arrow">&rarr;</div>
+    </div>
+    <div class="process-row">
+      <div class="process-left">
+        <div class="process-num">03</div>
+        <div>
+          <div class="process-title">Assistive Pedagogical Recommendation</div>
+          <div class="process-desc">Local LLM generates actionable, non-prescriptive interventions (quick poll, peer discussion, stretch break).</div>
+        </div>
+      </div>
+      <div class="process-arrow">&rarr;</div>
+    </div>
+  </div>
+</div>
+
+<!-- Suggestions Cards Feed -->
+<div>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h3 style="font-size: 20px;">Session Insights Timeline</h3>
+    <span style="font-size: 13px; color: var(--text-muted);">
+      {% if active_session %}Session: <strong>{{ active_session.name }}</strong>{% else %}Historical Log{% endif %}
+    </span>
+  </div>
+
+  <div class="suggestions-grid">
+    {% if suggestions %}
+      {% for s in suggestions %}
+      <div class="suggestion-card">
+        <div class="suggestion-meta">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="suggestion-badge">{{ s.trigger_type|upper }}</span>
+            {% if s.drop_percentage > 0 %}
+            <span style="color: #FF5C5C; font-size: 12px; font-weight: 700;">-{{ s.drop_percentage }}% Drop</span>
+            {% endif %}
+          </div>
+          <span class="suggestion-time">{{ s.time }} &bull; Source: {{ s.source }} ({{ s.model_name }})</span>
+        </div>
+        <div class="suggestion-text">
+          {{ s.suggestion }}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="suggestion-card">
+        <div class="suggestion-meta">
+          <span class="suggestion-badge">Assistant Idle</span>
+          <span class="suggestion-time">Ready</span>
+        </div>
+        <div class="suggestion-text">
+          No attention drops or critical anomalies recorded yet. Suggestions will be logged here automatically during your live session.
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

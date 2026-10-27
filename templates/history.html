@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Session History - Multimodal Attendance & Engagement Agent{% endblock %}
+
+{% block content %}
+<div class="section-hero">
+  <div class="pill-badge">
+    <span class="pill-dot"></span>
+    Historical Archive
+  </div>
+  <h1 class="hero-heading">
+    Classroom Sessions. Complete <span class="highlight">History.</span>
+  </h1>
+  <p class="hero-sub">
+    Browse all completed lectures, review class-wide engagement averages, and download CSV registers 
+    or printable pedagogical reports.
+  </p>
+</div>
+
+<!-- Cards Grid for History -->
+<div class="features-grid">
+  {% if sessions %}
+    {% for sess in sessions %}
+    <div class="feature-card">
+      <div class="feature-icon-chip">📅</div>
+      <div style="font-size: 12px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; margin-bottom: 6px;">
+        {{ sess.subject }} &bull; {{ sess.started_at }}
+      </div>
+      <h3 class="feature-title">{{ sess.name }}</h3>
+      <p class="feature-desc">
+        Duration: <strong>{{ sess.duration_seconds // 60 }} min {{ sess.duration_seconds % 60 }} sec</strong><br>
+        Students Present: <strong>{{ sess.present_count }} / {{ sess.total_enrolled }}</strong><br>
+        Average Class Engagement: <strong style="color: var(--accent);">{{ sess.avg_engagement }}%</strong>
+      </p>
+      
+      <div style="display: flex; gap: 10px; margin-top: auto;">
+        <a href="/reports/session/{{ sess.id }}/html" target="_blank" class="btn btn-secondary btn-sm" style="flex: 1;">
+          View Report &rarr;
+        </a>
+        <a href="/reports/session/{{ sess.id }}/csv" class="btn btn-primary btn-sm">
+          CSV &darr;
+        </a>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div style="grid-column: 1 / -1; background: var(--bg-card); border: var(--border-subtle); border-radius: var(--radius-card); padding: 50px; text-align: center; color: var(--text-muted);">
+      <h3 style="margin-bottom: 10px; font-size: 20px;">No Session History Found</h3>
+      <p>Start a session on the Live Session dashboard to record attendance and engagement analytics.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,47 @@
+# Python bytecode & environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Databases
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+data/*.db
+
+# Large Models & Pretrained Weights
+models/*.pt
+models/*.onnx
+models/*.weights
+*.pt
+*.onnx
+*.zip
+data/insightface/
+
+# Media & Recorded Videos
+data/videos/*
+data/sample_videos/*
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wav
+
+# Generated Reports & Output Artifacts
+outputs/reports/*
+outputs/snapshots/*
+outputs/annotated_videos/*
+*.pdf
+
+# IDE & OS caches
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.agents/
+.env

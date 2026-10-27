@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Student Enrollment - Multimodal Attendance & Engagement Agent{% endblock %}
+
+{% block content %}
+<div class="section-hero">
+  <div class="pill-badge">
+    <span class="pill-dot"></span>
+    Biometric Registry
+  </div>
+  <h1 class="hero-heading">
+    Enroll Students. Verify <span class="highlight">Embeddings.</span>
+  </h1>
+  <p class="hero-sub">
+    Register students via 5 live webcam samples. Only averaged, irreversible face embeddings are stored locally. 
+    Zero raw photos or video footage are ever saved to disk.
+  </p>
+  <div class="hero-cta">
+    <button class="btn btn-primary" onclick="openEnrollmentModal()">
+      + New Student Enrollment
+    </button>
+    <button class="btn btn-danger btn-sm" onclick="confirmDeleteAll()">
+      🗑 Delete All Biometric Data
+    </button>
+  </div>
+</div>
+
+<!-- Bulk Student List Card -->
+<div class="table-card">
+  <div class="table-header-box">
+    <div>
+      <h3 style="font-size: 18px;">Enrolled Student Directory</h3>
+      <p style="font-size: 13px; color: var(--text-muted);"><span id="enrolled-count">{{ students|length }}</span> active students enrolled in local biometric database.</p>
+    </div>
+  </div>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Roll Number</th>
+        <th>Student Name</th>
+        <th>Quality Samples</th>
+        <th>Enrolled At</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="students-tbody">
+      {% if students %}
+        {% for s in students %}
+        <tr id="student-row-{{ s.id }}">
+          <td>#{{ s.id }}</td>
+          <td><strong>{{ s.roll_number }}</strong></td>
+          <td>{{ s.name }}</td>
+          <td><span class="status-chip present">✓ 5 Samples (Averaged)</span></td>
+          <td>{{ s.created_at }}</td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="openEditModal({{ s.id }}, '{{ s.name }}', '{{ s.roll_number }}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteStudent({{ s.id }})">Delete</button>
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr id="empty-row">
+          <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px;">
+            No students enrolled yet. Click <strong>"+ New Student Enrollment"</strong> to register students.
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 5-Sample Enrollment Modal -->
+<div id="enrollment-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:999; align-items:center; justify-content:center; overflow-y:auto; padding:20px;">
+  <div style="background:var(--bg-card); border:var(--border-subtle); border-radius:var(--radius-card); padding:32px; width:680px; max-width:95%;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="font-size:22px;">Enroll Student Biometrics</h3>
+      <button onclick="closeEnrollmentModal()" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer;">&times;</button>
+    </div>
+
+    <!-- Step 1: Info inputs -->
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:20px;">
+      <div>
+        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase;">Student Full Name</label>
+        <input type="text" id="enroll-name" placeholder="e.g. Ashutosh Pandey" style="width:100%; padding:10px 14px; background:var(--bg-section); border:var(--border-subtle); border-radius:8px; color:#FFF; font-family:var(--font-body);">
+      </div>
+      <div>
+        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase;">Roll Number / Student ID</label>
+        <input type="text" id="enroll-roll" placeholder="e.g. 0103CS211045" style="width:100%; padding:10px 14px; background:var(--bg-section); border:var(--border-subtle); border-radius:8px; color:#FFF; font-family:var(--font-body);">
+      </div>
+    </div>
+
+    <!-- Step 2: Live Video with Quality Checks -->
+    <div style="position:relative; width:100%; aspect-ratio:4/3; background:#000; border-radius:12px; overflow:hidden; margin-bottom:16px;">
+      <video id="enroll-video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
+      <canvas id="enroll-canvas" style="display:none;"></canvas>
+      <div id="enroll-quality-pill" style="position:absolute; bottom:12px; left:12px; background:rgba(0,0,0,0.75); backdrop-filter:blur(6px); padding:6px 14px; border-radius:var(--radius-pill); font-size:12px; border:1px solid rgba(255,255,255,0.15);">
+        Evaluating frame quality...
+      </div>
+    </div>
+
+    <!-- Quality Gate Status Grid -->
+    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:20px; font-size:12px;">
+      <div id="gate-single" style="background:var(--bg-section); padding:8px 12px; border-radius:6px; border:var(--border-subtle); text-align:center;">
+        <span id="gate-single-icon">⏳</span> Single Face
+      </div>
+      <div id="gate-size" style="background:var(--bg-section); padding:8px 12px; border-radius:6px; border:var(--border-subtle); text-align:center;">
+        <span id="gate-size-icon">⏳</span> Face Size
+      </div>
+      <div id="gate-blur" style="background:var(--bg-section); padding:8px 12px; border-radius:6px; border:var(--border-subtle); text-align:center;">
+        <span id="gate-blur-icon">⏳</span> Sharpness
+      </div>
+      <div id="gate-light" style="background:var(--bg-section); padding:8px 12px; border-radius:6px; border:var(--border-subtle); text-align:center;">
+        <span id="gate-light-icon">⏳</span> Lighting
+      </div>
+    </div>
+
+    <!-- 5 Samples Counter -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+      <div style="display:flex; gap:8px;">
+        <div class="sample-slot" id="slot-1" style="width:36px; height:36px; border-radius:50%; background:var(--bg-section); border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">1</div>
+        <div class="sample-slot" id="slot-2" style="width:36px; height:36px; border-radius:50%; background:var(--bg-section); border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">2</div>
+        <div class="sample-slot" id="slot-3" style="width:36px; height:36px; border-radius:50%; background:var(--bg-section); border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">3</div>
+        <div class="sample-slot" id="slot-4" style="width:36px; height:36px; border-radius:50%; background:var(--bg-section); border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">4</div>
+        <div class="sample-slot" id="slot-5" style="width:36px; height:36px; border-radius:50%; background:var(--bg-section); border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px;">5</div>
+      </div>
+      <div>
+        <button class="btn btn-secondary btn-sm" id="btn-capture-sample" onclick="captureSample()">Capture Sample (<span id="sample-count-badge">0</span>/5)</button>
+      </div>
+    </div>
+
+    <!-- Complete button -->
+    <div style="display:flex; justify-content:flex-end; gap:12px; border-top:var(--border-subtle); padding-top:16px;">
+      <button class="btn btn-secondary btn-sm" onclick="closeEnrollmentModal()">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="btn-save-enrollment" disabled onclick="saveEnrollment()">Complete & Save Embeddings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Student Modal -->
+<div id="edit-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:999; align-items:center; justify-content:center;">
+  <div style="background:var(--bg-card); border:var(--border-subtle); border-radius:var(--radius-card); padding:28px; width:400px; max-width:90%;">
+    <h3 style="margin-bottom:16px;">Edit Student Record</h3>
+    <input type="hidden" id="edit-student-id">
+    <div style="margin-bottom:14px;">
+      <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px;">Name</label>
+      <input type="text" id="edit-student-name" style="width:100%; padding:10px; background:var(--bg-section); border:var(--border-subtle); border-radius:8px; color:#FFF;">
+    </div>
+    <div style="margin-bottom:20px;">
+      <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px;">Roll Number</label>
+      <input type="text" id="edit-student-roll" style="width:100%; padding:10px; background:var(--bg-section); border:var(--border-subtle); border-radius:8px; color:#FFF;">
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:10px;">
+      <button class="btn btn-secondary btn-sm" onclick="closeEditModal()">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveStudentEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/enrollment.js"></script>
+{% endblock %}
