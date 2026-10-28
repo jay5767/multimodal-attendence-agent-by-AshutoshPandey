@@ -26,6 +26,29 @@ class EnrollmentManager:
         db = self.attendance_mgr.get_db()
         try:
             students = db.query(Student).filter(Student.is_active == True).all()
+            if len(students) == 0:
+                print("[EnrollmentManager] Database is fresh: auto-seeding classroom roster...")
+                default_students = [
+                    ("Ashutosh Pandey", "0103AL221030"),
+                    ("Aarav Sharma", "0103AL221001"),
+                    ("Priya Patel", "0103AL221045"),
+                    ("Rohan Verma", "0103AL221055")
+                ]
+                for name, roll in default_students:
+                    rng = np.random.RandomState(abs(hash(roll)) % (2**31))
+                    dummy_vec = rng.randn(512).astype(np.float32)
+                    dummy_vec /= np.linalg.norm(dummy_vec)
+                    s_new = Student(
+                        name=name,
+                        roll_number=roll,
+                        embedding_json=json.dumps(dummy_vec.tolist()),
+                        sample_count=5,
+                        is_active=True
+                    )
+                    db.add(s_new)
+                db.commit()
+                students = db.query(Student).filter(Student.is_active == True).all()
+
             for s in students:
                 try:
                     vec = np.array(json.loads(s.embedding_json), dtype=np.float32)

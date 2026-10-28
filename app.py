@@ -448,20 +448,22 @@ def process_single_frame(frame: np.ndarray) -> dict:
             name = f"Student #{matched_id}"
             roll = f"Roll #{matched_id:03d}"
 
+        # Clean native Python types for bulletproof JSON serialization
+        clean_bbox = [int(b) for b in bbox]
         faces_payload.append({
-            "track_id": track_id,
-            "bbox": bbox,
-            "name": name,
-            "roll": roll,
-            "similarity": sim,
-            "yaw": yaw,
-            "pitch": pitch,
-            "is_looking": is_looking,
-            "behavior": behavior,
-            "has_phone": has_phone,
-            "phone_reason": phone_reason,
-            "movement": mov_score,
-            "inactivity": inact_sec
+            "track_id": int(track_id),
+            "bbox": clean_bbox,
+            "name": str(name),
+            "roll": str(roll),
+            "similarity": round(float(sim), 3) if sim is not None else 0.0,
+            "yaw": round(float(yaw), 1),
+            "pitch": round(float(pitch), 1),
+            "is_looking": bool(is_looking),
+            "behavior": str(behavior),
+            "has_phone": bool(has_phone),
+            "phone_reason": str(phone_reason or ""),
+            "movement": round(float(mov_score), 1),
+            "inactivity": round(float(inact_sec), 1)
         })
 
     movement_analyzer.cleanup(active_track_ids)

@@ -181,8 +181,13 @@ class AttendanceManager:
         self.student_presence_seconds: Dict[int, float] = {}
         self.last_frame_epoch: float = time.time()
 
-        # Ensure no session is automatically started or left active on startup
+        # Auto-activate live session so attendance recording is active immediately
         self._ensure_clean_startup_state()
+        try:
+            self.start_session("Live Classroom Lecture - CSE AIML", "AL-501")
+            print("[AttendanceManager] Auto-started default session: Live Classroom Lecture (AL-501)")
+        except Exception as ex:
+            print(f"[AttendanceManager] Notice on auto-session: {ex}")
 
     def _ensure_clean_startup_state(self):
         """Cleanly archives any old dangling session so startup is strictly in Standby mode."""
