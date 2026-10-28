@@ -2,12 +2,12 @@
   "AL-501": {
     "subject": "Operating System",
     "faculty": "Dr. Aakriti Jain",
-    "total_frames": 2945,
-    "attentive_frames": 1475,
-    "attention_rate": 50.1,
-    "distracted_phone": 924,
+    "total_frames": 3569,
+    "attentive_frames": 1733,
+    "attention_rate": 48.6,
+    "distracted_phone": 1043,
     "distracted_sleep": 4,
-    "distracted_away": 1263
+    "distracted_away": 1621
   },
   "AL-502": {
     "subject": "Database Management System",

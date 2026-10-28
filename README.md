@@ -99,6 +99,36 @@ http://localhost:5000
 
 ---
 
+## 🌐 Public Web Access & Deployment Guide
+
+Want to share the system with teachers, students, or evaluators anywhere in the world?
+
+### Method 1: Instant Public HTTPS Link (60 Seconds, Zero Account Required)
+Double-click `share_online.bat` (or run `./share_online.ps1` in PowerShell).
+- Automatically spins up a high-speed, secure Cloudflare tunnel.
+- Gives you an instant public web link: `https://<random-name>.trycloudflare.com`.
+- **Works worldwide** on any phone, laptop, or tablet.
+- **Enables HTTPS automatically**, allowing the browser to grant webcam and microphone permissions.
+
+### Method 2: Permanent 24/7 Cloud Hosting (Hugging Face Spaces - Free 16GB RAM)
+For deep learning computer vision apps, **Hugging Face Spaces** provides **16GB RAM + 2 vCPU completely free**:
+1. Go to [huggingface.co/spaces](https://huggingface.co/spaces) and click **Create new Space**.
+2. Space Name: `multimodal-attendance-agent`
+3. Space SDK: Select **Docker** (Blank).
+4. License: `MIT` / Public.
+5. Push or upload this project repository to the space.
+6. Hugging Face builds the included `Dockerfile` and gives you a permanent URL:
+   `https://<username>-multimodal-attendance-agent.hf.space`
+
+### Method 3: Cloud Deployment via Render.com
+1. Push this project to GitHub.
+2. Sign in to [render.com](https://render.com) and click **New Web Service**.
+3. Select your GitHub repository.
+4. Render automatically detects the included `render.yaml` and `Dockerfile`.
+5. Click **Create Web Service** to get a permanent `https://<app-name>.onrender.com` website.
+
+---
+
 ## ⚡ Hardware Acceleration (CUDA GPU / CPU)
 
 - **GPU Acceleration**: The system automatically queries for `CUDAExecutionProvider` via ONNX Runtime. If an NVIDIA GPU (e.g. RTX 4050 Laptop GPU) and CUDA drivers are present, GPU mode is automatically activated.

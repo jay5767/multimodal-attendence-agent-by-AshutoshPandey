@@ -16,12 +16,13 @@ data/*.db
 
 # Large Models & Pretrained Weights
 models/*.pt
-models/*.onnx
 models/*.weights
 *.pt
-*.onnx
+*.weights
 *.zip
 data/insightface/
+# Track lean ONNX model for zero-torch low-RAM cloud deployment
+!models/yolov8n.onnx
 
 # Media & Recorded Videos
 data/videos/*
@@ -45,3 +46,6 @@ outputs/annotated_videos/*
 Thumbs.db
 .agents/
 .env
+
+# Cloudflare tunnel binary
+cloudflared.exe

@@ -38,7 +38,7 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "multimodal-ai-classroom-secret-key-2026")
     DEBUG = False
     HOST = "0.0.0.0"
-    PORT = 5000
+    PORT = int(os.environ.get("PORT", 5000))
 
     # Database
     DATABASE_PATH = str(DATA_DIR / "attendance.db")
@@ -51,8 +51,9 @@ class Config:
     PROCESS_EVERY_N_FRAMES = 2        # Process 1 out of every N frames to maintain high FPS
     TARGET_WIDTH = 640
     TARGET_HEIGHT = 480
-    INSIGHTFACE_MODEL = "buffalo_l"
+    INSIGHTFACE_MODEL = os.environ.get("INSIGHTFACE_MODEL", "buffalo_s")
     PREFER_GPU = True                 # CUDA execution provider with CPU fallback
+    YOLO_ONNX_PATH = str(BASE_DIR / "models" / "yolov8n.onnx")
     YOLO_MODEL_PATH = str(BASE_DIR / "models" / "yolov8n.pt")
     PHONE_CONF_THRESHOLD = 0.22       # Confidence threshold for cell phone detection
     

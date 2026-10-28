@@ -674,8 +674,9 @@ function updateEngagementGauge(score) {
 }
 
 function updateAttendanceTable(records) {
-  const tbody = document.getElementById("live-attendance-tbody");
-  if (!tbody || !records || records.length === 0) return;
+  const liveTbody = document.getElementById("live-attendance-tbody");
+  const fullTbody = document.getElementById("full-attendance-tbody");
+  if (!records || records.length === 0) return;
 
   let presentCount = 0;
   let rowsHtml = "";
@@ -690,17 +691,37 @@ function updateAttendanceTable(records) {
       presentCount++;
     } else if (r.status === "Partial") {
       chipClass = "partial";
+    } else if (r.status.includes("Ready")) {
+      chipClass = "ready";
     }
 
-    const verifiedText = r.sustained_verified
-      ? '<span style="color:var(--accent); font-weight:600;">✓ Verified (&ge;70%)</span>'
-      : '<span style="color:var(--text-dim);">Unverified</span>';
+    // Dynamic verified status with percentage feedback
+    const sRatio = r.sustained_ratio !== undefined ? Math.round(r.sustained_ratio) : (r.sustained_verified ? 100 : 0);
+    let verifiedText = '<span style="color:var(--text-dim);">Unverified (0%)</span>';
+    if (r.sustained_verified || r.status === "Present" || r.status === "Late") {
+      verifiedText = `<span style="color:var(--accent); font-weight:600;">✓ Verified (${Math.max(70, sRatio)}%)</span>`;
+    } else if (r.status.includes("Ready")) {
+      verifiedText = `<span style="color:var(--accent); font-weight:600;">👀 In Camera (Click Start Session to Record)</span>`;
+    } else if (r.status === "Standby") {
+      verifiedText = `<span style="color:var(--text-dim);">Standby (No Active Session)</span>`;
+    } else if (sRatio > 0 || r.status === "Partial") {
+      verifiedText = `<span style="color:#F5B83D; font-weight:600;">⚡ Evaluating (${sRatio}%)</span>`;
+    }
 
     let displayName = r.student_name;
     let displayRoll = r.roll_number;
     if (isAnonymousMode && displayName && displayName !== "Unknown") {
       displayName = `Student #${r.student_id || 1}`;
       displayRoll = `Roll #${String(r.student_id || 1).padStart(3, '0')}`;
+    }
+
+    // Dynamic presence time formatting (seconds vs minutes)
+    const sec = Number(r.total_presence_seconds) || 0.0;
+    let presenceDisplay = `${Math.round(sec)}s`;
+    if (sec >= 60) {
+      const m = Math.floor(sec / 60);
+      const s = Math.round(sec % 60);
+      presenceDisplay = `${m}m ${s}s`;
     }
 
     rowsHtml += `
@@ -711,12 +732,13 @@ function updateAttendanceTable(records) {
         <td>${verifiedText}</td>
         <td>${r.first_seen}</td>
         <td>${r.last_seen}</td>
-        <td>${(r.total_presence_seconds / 60.0).toFixed(1)} min</td>
+        <td>${presenceDisplay}</td>
       </tr>
     `;
   });
 
-  tbody.innerHTML = rowsHtml;
+  if (liveTbody) liveTbody.innerHTML = rowsHtml;
+  if (fullTbody) fullTbody.innerHTML = rowsHtml;
 
   const statPres = document.getElementById("stat-present-count");
   if (statPres) statPres.innerText = presentCount;
@@ -817,6 +839,14 @@ async function fetchFullAttendance() {
         let displayName = isAnonymousMode && r.student_name !== "Unknown" ? `Student #${r.student_id || 1}` : r.student_name;
         let displayRoll = isAnonymousMode && r.student_name !== "Unknown" ? `Roll #${String(r.student_id || 1).padStart(3, '0')}` : r.roll_number;
 
+        const sec = Number(r.total_presence_seconds) || 0.0;
+        let presenceDisplay = `${Math.round(sec)}s`;
+        if (sec >= 60) {
+          const m = Math.floor(sec / 60);
+          const s = Math.round(sec % 60);
+          presenceDisplay = `${m}m ${s}s`;
+        }
+
         html += `
           <tr>
             <td><strong>${displayRoll}</strong></td>
@@ -825,7 +855,7 @@ async function fetchFullAttendance() {
             <td>${r.sustained_verified ? '<span style="color:var(--accent); font-weight:600;">✓ Verified (&ge;70%)</span>' : '<span style="color:var(--text-dim);">Unverified</span>'}</td>
             <td>${r.first_seen}</td>
             <td>${r.last_seen}</td>
-            <td>${(r.total_presence_seconds / 60.0).toFixed(1)} min</td>
+            <td>${presenceDisplay}</td>
           </tr>
         `;
       });

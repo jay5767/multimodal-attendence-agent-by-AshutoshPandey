@@ -46,7 +46,7 @@ class FaceEngine:
             else:
                 self.active_provider = "CPU"
                 self.is_gpu = False
-            print(f"[FaceEngine] Initialized InsightFace buffalo_l on {self.active_provider}")
+            print(f"[FaceEngine] Initialized InsightFace {Config.INSIGHTFACE_MODEL} on {self.active_provider}")
         except Exception as e:
             print(f"[FaceEngine] InsightFace initialization warning: {e}. Activating OpenCV Haar/DNN fallback.")
             self.app = None

@@ -82,7 +82,7 @@ class AttendanceRecord(Base):
     session = relationship("Session", back_populates="attendance_records")
     student = relationship("Student", back_populates="records")
 
-    def to_dict(self, anonymous: bool = False) -> Dict[str, Any]:
+    def to_dict(self, anonymous: bool = False, sustained_ratio: Optional[float] = None) -> Dict[str, Any]:
         return {
             "id": self.id,
             "session_id": self.session_id,
@@ -93,7 +93,8 @@ class AttendanceRecord(Base):
             "last_seen": self.last_seen.strftime("%H:%M:%S") if self.last_seen else "--",
             "total_presence_seconds": round(self.total_presence_seconds, 1),
             "status": self.status,
-            "sustained_verified": self.sustained_verified
+            "sustained_verified": self.sustained_verified,
+            "sustained_ratio": round(sustained_ratio, 1) if sustained_ratio is not None else (100.0 if self.sustained_verified else 0.0)
         }
 
 class EngagementInterval(Base):
@@ -160,9 +161,15 @@ class AttendanceManager:
     Manages session lifecycle, real-time rolling window sustained presence,
     status transitions (Present, Late, Partial, Absent), and database persistence.
     """
-    def __init__(self, db_uri: str = Config.SQLALCHEMY_DATABASE_URI):
-        self.engine = create_engine(db_uri, echo=False, connect_args={"check_same_thread": False})
-        Base.metadata.create_all(self.engine)
+    def __init__(self, db_uri: Optional[str] = None):
+        uri = db_uri or Config.SQLALCHEMY_DATABASE_URI
+        try:
+            self.engine = create_engine(uri, echo=False, connect_args={"check_same_thread": False})
+            Base.metadata.create_all(self.engine)
+        except Exception as e:
+            print(f"[AttendanceManager] Warning: failed to initialize SQLite at {uri} ({e}). Falling back to :memory: database.")
+            self.engine = create_engine("sqlite:///:memory:", echo=False, connect_args={"check_same_thread": False})
+            Base.metadata.create_all(self.engine)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
         # In-memory tracking for active session rolling presence windows
@@ -173,6 +180,29 @@ class AttendanceManager:
         # Cumulative presence time tracker: {student_id: float}
         self.student_presence_seconds: Dict[int, float] = {}
         self.last_frame_epoch: float = time.time()
+
+        # Ensure no session is automatically started or left active on startup
+        self._ensure_clean_startup_state()
+
+    def _ensure_clean_startup_state(self):
+        """Cleanly archives any old dangling session so startup is strictly in Standby mode."""
+        db = self.get_db()
+        try:
+            old_active = db.query(Session).filter(Session.is_active == True).all()
+            if old_active:
+                for s in old_active:
+                    s.is_active = False
+                    if not s.ended_at:
+                        s.ended_at = datetime.utcnow()
+                db.commit()
+                print(f"[AttendanceManager] Archived {len(old_active)} dangling sessions. System ready in Standby mode.")
+            self.active_session_id = None
+            self.student_window_history = {}
+            self.student_presence_seconds = {}
+        except Exception as e:
+            print(f"[AttendanceManager] Startup cleanup notice: {e}")
+        finally:
+            db.close()
 
     def get_db(self):
         db = self.SessionLocal()
@@ -237,24 +267,52 @@ class AttendanceManager:
     def process_frame(self, detected_student_ids: List[int], now_epoch: Optional[float] = None, anonymous: bool = False) -> List[Dict[str, Any]]:
         """
         Processes a single frame for sustained presence logic.
-        Evaluates rolling 60s presence ratio >= 0.70.
+        Evaluates rolling presence ratio >= 0.70.
         Updates status to Present / Late / Partial.
         """
-        if self.active_session_id is None:
-            return []
-
         now = now_epoch if now_epoch is not None else time.time()
         dt = max(0.01, min(1.0, now - self.last_frame_epoch))
         self.last_frame_epoch = now
 
         db = self.get_db()
-        updated_records = []
         try:
             all_students = db.query(Student).filter(Student.is_active == True).all()
+            if not all_students:
+                return []
+
+            # Standby / Live Preview when no formal session is active
+            if self.active_session_id is None:
+                preview_records = []
+                for student in all_students:
+                    sid = student.id
+                    is_detected = (sid in detected_student_ids)
+                    if is_detected:
+                        self.student_presence_seconds[sid] = self.student_presence_seconds.get(sid, 0.0) + dt
+                        now_str = datetime.utcnow().strftime("%H:%M:%S")
+                    else:
+                        now_str = "--"
+
+                    sec = self.student_presence_seconds.get(sid, 0.0)
+                    preview_records.append({
+                        "id": sid,
+                        "session_id": 0,
+                        "student_id": sid,
+                        "student_name": student.to_dict(anonymous)["name"],
+                        "roll_number": student.to_dict(anonymous)["roll_number"],
+                        "first_seen": now_str if is_detected else "--",
+                        "last_seen": now_str if is_detected else "--",
+                        "total_presence_seconds": round(sec, 1),
+                        "status": "Ready (In Camera)" if is_detected else "Standby",
+                        "sustained_verified": False,
+                        "sustained_ratio": 0.0
+                    })
+                return preview_records
+
+            # Active formal session tracking
             records = db.query(AttendanceRecord).filter(AttendanceRecord.session_id == self.active_session_id).all()
             rec_map = {r.student_id: r for r in records}
-
             window_cutoff = now - Config.ROLLING_WINDOW_SECONDS
+            updated_records = []
 
             for student in all_students:
                 sid = student.id
@@ -269,16 +327,24 @@ class AttendanceManager:
                     (t, det) for (t, det) in self.student_window_history[sid] if t >= window_cutoff
                 ]
 
-                # Tally frames in window
+                # Overall window ratio
                 window = self.student_window_history[sid]
                 total_in_window = len(window)
                 detected_in_window = sum(1 for (_, det) in window if det)
+                overall_ratio = (detected_in_window / total_in_window) if total_in_window > 0 else 0.0
 
-                ratio = (detected_in_window / total_in_window) if total_in_window > 0 else 0.0
+                # Recent 10-second active presence ratio
+                recent_cutoff = now - 10.0
+                recent_window = [det for (t, det) in window if t >= recent_cutoff]
+                recent_ratio = (sum(1 for d in recent_window if d) / len(recent_window)) if recent_window else 0.0
+
+                effective_ratio = max(overall_ratio, recent_ratio)
 
                 rec = rec_map.get(sid)
                 if not rec:
-                    continue
+                    rec = AttendanceRecord(session_id=self.active_session_id, student_id=sid, status="Absent", sustained_verified=False)
+                    db.add(rec)
+                    db.flush()
 
                 if is_detected:
                     self.student_presence_seconds[sid] = self.student_presence_seconds.get(sid, 0.0) + dt
@@ -291,11 +357,9 @@ class AttendanceManager:
                 if is_detected:
                     rec.frames_present += 1
 
-                # Sustained presence trigger
-                # Must have accumulated at least 5 frames to avoid instantaneous false positives
-                if total_in_window >= 5 and ratio >= Config.SUSTAINED_PRESENCE_RATIO:
+                # Sustained presence trigger (verified if sustained over window or >= 5 seconds presence)
+                if (len(recent_window) >= 8 and recent_ratio >= Config.SUSTAINED_PRESENCE_RATIO) or (total_in_window >= 5 and overall_ratio >= Config.SUSTAINED_PRESENCE_RATIO) or (rec.total_presence_seconds >= 5.0 and is_detected):
                     rec.sustained_verified = True
-                    # Check if session start time was beyond late grace period
                     elapsed_since_start = now - self.session_start_epoch
                     if rec.status == "Absent" or rec.status == "Partial":
                         if elapsed_since_start <= Config.LATE_GRACE_PERIOD_SECONDS:
@@ -303,15 +367,14 @@ class AttendanceManager:
                         else:
                             rec.status = "Late"
                 elif rec.sustained_verified:
-                    # Already sustained verified, keep Present or Late
                     pass
-                elif rec.total_presence_seconds > 10.0 and rec.status == "Absent":
+                elif is_detected or (rec.total_presence_seconds >= 1.5 and rec.status == "Absent"):
                     rec.status = "Partial"
 
-                updated_records.append(rec)
+                updated_records.append(rec.to_dict(anonymous=anonymous, sustained_ratio=effective_ratio * 100.0))
 
             db.commit()
-            return [r.to_dict(anonymous=anonymous) for r in updated_records]
+            return updated_records
         finally:
             db.close()
 
