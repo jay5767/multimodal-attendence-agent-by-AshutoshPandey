@@ -1,19 +1,19 @@
 import cv2
 import numpy as np
+from collections import deque, defaultdict
 from typing import Dict, Any, Optional, Tuple, List
 from config import Config
 
 class HeadPoseEstimator:
     """
-    Estimates 3D head pose (Yaw, Pitch, Roll) and granular student behavior:
-    - Focused (looking at board / screen)
-    - Sleeping / Head Down (pitch < -18° or head tilted down with prolonged stillness)
+    Estimates 3D head pose (Yaw, Pitch, Roll) and stable student behavior:
+    - Focused (looking at screen / board)
+    - Sleeping / Head Down (pitch < -40° or sustained downward stillness)
     - Drowsy / Inactive (high stillness duration)
-    - Looking Down (reading, notebook, lap)
-    - Looking Away (yaw > 22° left or right)
-    - Looking Up
-    Uses InsightFace 5-point facial landmarks with high-precision geometry,
-    MediaPipe FaceMesh fallback, and PnP alignment.
+    - Looking Down (reading below desk)
+    - Looking Away (|yaw| > 42°)
+    - Looking Up (pitch > 36°)
+    Applies temporal hysteresis debouncing to prevent sensitivity flicker.
     """
     def __init__(self):
         self.use_mediapipe = False
@@ -29,25 +29,63 @@ class HeadPoseEstimator:
         ], dtype=np.float64)
 
         self.KEYPOINT_INDICES = [1, 152, 33, 263, 61, 291]
-
-        # Lazy load MediaPipe only when fallback is needed to save 150MB RAM
-        self.use_mediapipe = False
         self.mp_face_mesh = None
+
+        # Debounce state history: {track_id: deque of recent (is_looking_raw, behavior_raw)}
+        self._history = defaultdict(lambda: deque(maxlen=8))
+        self._last_stable_state = {}
+
+    def _debounce_state(self, track_id: int, is_looking_raw: bool, behavior_raw: str) -> Tuple[bool, str]:
+        """
+        Anti-jitter hysteresis: requires consecutive frames to switch state,
+        preventing continuous up-and-down toggling.
+        """
+        buf = self._history[track_id]
+        buf.append((is_looking_raw, behavior_raw))
+
+        # Default initial state
+        if track_id not in self._last_stable_state:
+            self._last_stable_state[track_id] = (is_looking_raw, behavior_raw)
+            return is_looking_raw, behavior_raw
+
+        last_is_looking, last_behavior = self._last_stable_state[track_id]
+
+        if last_is_looking:
+            # Currently FOCUSED: require at least 5 of last 8 frames to be distracted before switching
+            distracted_count = sum(1 for (looking, _) in buf if not looking)
+            if len(buf) >= 6 and distracted_count >= 5:
+                # Switch to distracted
+                recent_behaviors = [b for (looking, b) in buf if not looking]
+                chosen_b = recent_behaviors[-1] if recent_behaviors else behavior_raw
+                self._last_stable_state[track_id] = (False, chosen_b)
+                return False, chosen_b
+            else:
+                return True, "Focused"
+        else:
+            # Currently DISTRACTED: require at least 3 consecutive focused frames to switch back
+            recent_4 = list(buf)[-4:] if len(buf) >= 4 else list(buf)
+            focused_streak = sum(1 for (looking, _) in recent_4 if looking)
+            if focused_streak >= 3:
+                self._last_stable_state[track_id] = (True, "Focused")
+                return True, "Focused"
+            else:
+                return False, last_behavior
 
     def estimate_pose(
         self,
         frame_bgr: np.ndarray,
         bbox: Optional[Tuple[int, int, int, int]] = None,
         landmarks: Optional[Any] = None,
-        inactivity_seconds: float = 0.0
+        inactivity_seconds: float = 0.0,
+        track_id: int = 1
     ) -> Dict[str, Any]:
         """
-        Calculates yaw, pitch, roll and detailed behavioral state.
+        Calculates yaw, pitch, roll and debounced behavioral state.
         """
         h, w = frame_bgr.shape[:2]
         center = (w / 2.0, h / 2.0)
 
-        # 1. Primary High-Precision 5-Landmark Facial Geometry (from InsightFace)
+        # 1. Primary High-Precision 5-Landmark Facial Geometry (from InsightFace or YuNet)
         if landmarks is not None and len(landmarks) >= 5:
             try:
                 kps = np.array(landmarks, dtype=np.float32)
@@ -67,49 +105,47 @@ class HeadPoseEstimator:
                 yaw = float((nose_dx / eye_dist) * 80.0)
 
                 # Pitch: vertical offset of nose between eyes and mouth
-                # When looking straight: ratio ~ 0.44
-                # When looking down/sleeping: nose drops near mouth level -> ratio increases
-                # When looking up: nose rises towards eyes -> ratio decreases
                 nose_ratio = float((nose[1] - eye_mid[1]) / face_h)
                 pitch = float(-(nose_ratio - 0.54) * 80.0)
 
                 # Roll: eye horizon angle
                 roll = float(np.degrees(np.arctan2(re[1] - le[1], re[0] - le[0])))
 
-                # Realistic classroom behavioral state classification:
-                # Normal screen gaze is Focused (Green box).
-                # Head turned away (|yaw| > 35 deg) or head down/sleeping (pitch < -35 deg) is Distracted (Red box).
-                if pitch < -35.0 or (pitch < -26.0 and inactivity_seconds > 10.0):
-                    behavior = "Sleeping / Head Down"
-                    is_looking = False
-                elif inactivity_seconds > 30.0:
-                    behavior = "Drowsy / Inactive"
-                    is_looking = False
-                elif abs(yaw) > 35.0:
-                    behavior = "Looking Away"
-                    is_looking = False
-                elif pitch < -26.0:
-                    behavior = "Looking Down"
-                    is_looking = False
-                elif pitch > 30.0:
-                    behavior = "Looking Up"
-                    is_looking = False
+                # Realistic classroom thresholds with generous screen-view margins:
+                # Laptop/desktop screen interaction sits comfortably within pitch [-36 deg, +32 deg] and yaw [-42 deg, +42 deg].
+                if pitch < -42.0 or (pitch < -35.0 and inactivity_seconds > 8.0):
+                    raw_behavior = "Sleeping / Head Down"
+                    raw_looking = False
+                elif inactivity_seconds > 35.0:
+                    raw_behavior = "Drowsy / Inactive"
+                    raw_looking = False
+                elif abs(yaw) > 42.0:
+                    raw_behavior = "Looking Away"
+                    raw_looking = False
+                elif pitch < -36.0:
+                    raw_behavior = "Looking Down"
+                    raw_looking = False
+                elif pitch > 36.0:
+                    raw_behavior = "Looking Up"
+                    raw_looking = False
                 else:
-                    behavior = "Focused"
-                    is_looking = True
+                    raw_behavior = "Focused"
+                    raw_looking = True
+
+                final_looking, final_behavior = self._debounce_state(track_id, raw_looking, raw_behavior)
 
                 return {
                     "yaw": round(yaw, 1),
                     "pitch": round(pitch, 1),
                     "roll": round(roll, 1),
-                    "behavior": behavior,
-                    "is_looking_at_board": is_looking,
+                    "behavior": final_behavior,
+                    "is_looking_at_board": final_looking,
                     "landmarks_2d": kps.tolist()
                 }
             except Exception:
                 pass
 
-        # 2. MediaPipe FaceMesh PnP solver (if available)
+        # 2. MediaPipe FaceMesh PnP solver (if active)
         if self.use_mediapipe and self.face_mesh is not None:
             try:
                 rgb_frame = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -153,33 +189,39 @@ class HeadPoseEstimator:
                         yaw = ((yaw + 180) % 360) - 180
                         pitch = ((pitch + 180) % 360) - 180
 
-                        if pitch < -14.0 or (pitch < -8.0 and inactivity_seconds > 2.0) or (abs(roll) > 18.0 and inactivity_seconds > 2.0):
-                            behavior = "Sleeping / Head Down"
-                        elif inactivity_seconds > 4.0:
-                            behavior = "Drowsy / Inactive"
-                        elif pitch < -6.0:
-                            behavior = "Looking Down"
-                        elif abs(yaw) > Config.BOARD_YAW_MAX:
-                            behavior = "Looking Away"
-                        elif pitch > 16.0:
-                            behavior = "Looking Up"
+                        if pitch < -38.0 or (pitch < -30.0 and inactivity_seconds > 6.0):
+                            raw_behavior = "Sleeping / Head Down"
+                            raw_looking = False
+                        elif inactivity_seconds > 30.0:
+                            raw_behavior = "Drowsy / Inactive"
+                            raw_looking = False
+                        elif abs(yaw) > 42.0:
+                            raw_behavior = "Looking Away"
+                            raw_looking = False
+                        elif pitch < -34.0:
+                            raw_behavior = "Looking Down"
+                            raw_looking = False
+                        elif pitch > 34.0:
+                            raw_behavior = "Looking Up"
+                            raw_looking = False
                         else:
-                            behavior = "Focused"
+                            raw_behavior = "Focused"
+                            raw_looking = True
 
-                        is_looking = (behavior == "Focused")
+                        final_looking, final_behavior = self._debounce_state(track_id, raw_looking, raw_behavior)
 
                         return {
                             "yaw": round(yaw, 1),
                             "pitch": round(pitch, 1),
                             "roll": round(roll, 1),
-                            "behavior": behavior,
-                            "is_looking_at_board": is_looking,
+                            "behavior": final_behavior,
+                            "is_looking_at_board": final_looking,
                             "landmarks_2d": image_points.tolist()
                         }
             except Exception:
                 pass
 
-        # 3. Geometric Bounding Box Fallback
+        # 3. Geometric Bounding Box Fallback (robust margins)
         if bbox is not None:
             x1, y1, x2, y2 = bbox
             fc_x = (x1 + x2) / 2.0
@@ -187,24 +229,30 @@ class HeadPoseEstimator:
             approx_yaw = float(((fc_x - center[0]) / center[0]) * 35.0)
             approx_pitch = float(((fc_y - center[1]) / center[1]) * 20.0)
 
-            if approx_pitch < -12.0 or (approx_pitch < -6.0 and inactivity_seconds > 2.0):
-                behavior = "Sleeping / Head Down"
-            elif inactivity_seconds > 4.0:
-                behavior = "Drowsy / Inactive"
-            elif approx_pitch < -5.0:
-                behavior = "Looking Down"
-            elif abs(approx_yaw) > Config.BOARD_YAW_MAX:
-                behavior = "Looking Away"
+            if approx_pitch < -24.0 or (approx_pitch < -18.0 and inactivity_seconds > 6.0):
+                raw_behavior = "Sleeping / Head Down"
+                raw_looking = False
+            elif inactivity_seconds > 30.0:
+                raw_behavior = "Drowsy / Inactive"
+                raw_looking = False
+            elif abs(approx_yaw) > 38.0:
+                raw_behavior = "Looking Away"
+                raw_looking = False
+            elif approx_pitch < -22.0:
+                raw_behavior = "Looking Down"
+                raw_looking = False
             else:
-                behavior = "Focused"
+                raw_behavior = "Focused"
+                raw_looking = True
 
-            is_looking = (behavior == "Focused")
+            final_looking, final_behavior = self._debounce_state(track_id, raw_looking, raw_behavior)
+
             return {
                 "yaw": round(approx_yaw, 1),
                 "pitch": round(approx_pitch, 1),
                 "roll": 0.0,
-                "behavior": behavior,
-                "is_looking_at_board": is_looking,
+                "behavior": final_behavior,
+                "is_looking_at_board": final_looking,
                 "landmarks_2d": []
             }
 

@@ -29,10 +29,10 @@ class FaceEngine:
                 self.yunet = cv2.FaceDetectorYN.create(
                     model=yunet_path,
                     config="",
-                    input_size=(Config.TARGET_WIDTH, Config.TARGET_HEIGHT),
-                    score_threshold=0.52,
-                    nms_threshold=0.28,
-                    top_k=5000
+                    input_size=(320, 240),
+                    score_threshold=0.58,
+                    nms_threshold=0.30,
+                    top_k=20
                 )
                 print(f"[FaceEngine] Initialized High-Accuracy YuNet CNN Face Detector ({yunet_path})")
             except Exception as e:
@@ -176,16 +176,7 @@ class FaceEngine:
     def detect_faces(self, frame_bgr: np.ndarray) -> List[Dict[str, Any]]:
         """
         Detects faces in frame_bgr and computes 512-d normalized face embeddings.
-        Returns:
-            [
-                {
-                    "bbox": (x1, y1, x2, y2),
-                    "embedding": np.ndarray (512,),
-                    "landmarks": np.ndarray or None,
-                    "det_score": float
-                },
-                ...
-            ]
+        Strict anti-ghost filtering: high score threshold and conservative fallbacks.
         """
         results = []
         if frame_bgr is None or frame_bgr.size == 0:
@@ -212,13 +203,16 @@ class FaceEngine:
                     for face in yn_faces:
                         fx, fy, fw, fh = face[0:4]
                         conf = float(face[-1])
-                        if conf < 0.50:
+                        if conf < 0.58:
                             continue
                         x1 = max(0, min(w - 1, int(fx * scale_x)))
                         y1 = max(0, min(h - 1, int(fy * scale_y)))
                         x2 = max(0, min(w, int((fx + fw) * scale_x)))
                         y2 = max(0, min(h, int((fy + fh) * scale_y)))
-                        if x2 <= x1 or y2 <= y1:
+                        box_w = x2 - x1
+                        box_h = y2 - y1
+                        # Ghost rejection: reject tiny noise patches
+                        if box_w < 45 or box_h < 45:
                             continue
 
                         landmarks = [
@@ -235,7 +229,8 @@ class FaceEngine:
                             "landmarks": landmarks,
                             "det_score": float(conf)
                         })
-                    return self._nms_dedup(results)
+                    deduped = self._nms_dedup(results)
+                    return deduped[:2]
                 else:
                     return []
             except Exception as e:
@@ -251,7 +246,7 @@ class FaceEngine:
                     y1 = max(0, min(h - 1, y1))
                     x2 = max(0, min(w, x2))
                     y2 = max(0, min(h, y2))
-                    if x2 <= x1 or y2 <= y1:
+                    if (x2 - x1) < 45 or (y2 - y1) < 45:
                         continue
 
                     # L2 normalize embedding
@@ -266,29 +261,22 @@ class FaceEngine:
                         "landmarks": getattr(f, "kps", None),
                         "det_score": float(getattr(f, "det_score", 0.95))
                     })
-                return results
+                return self._nms_dedup(results)[:2]
             except Exception as e:
                 pass
 
-        # 3. Fallback Haar cascade detection with enhanced sensitivity & geometric landmark synthesis
+        # 3. Fallback Haar cascade: Strictly conservative settings (NO GHOSTS)
         if hasattr(self, "cascade") and self.cascade is not None and not self.cascade.empty():
             try:
                 gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-                # 1. Histogram equalization (enhances low-light and uneven webcam lighting)
                 gray_eq = cv2.equalizeHist(gray)
-                dets = self.cascade.detectMultiScale(gray_eq, scaleFactor=1.08, minNeighbors=3, minSize=(30, 30))
-                
-                # 2. Raw grayscale with relaxed threshold if equalized returned nothing
-                if len(dets) == 0:
-                    dets = self.cascade.detectMultiScale(gray, scaleFactor=1.06, minNeighbors=2, minSize=(25, 25))
-
-                # 3. Profile cascade check if turned away
-                if len(dets) == 0 and hasattr(self, "profile_cascade") and self.profile_cascade is not None and not self.profile_cascade.empty():
-                    dets = self.profile_cascade.detectMultiScale(gray_eq, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30))
+                # Robust detection requiring at least 6 agreeing neighbors and min 60x60 size
+                dets = self.cascade.detectMultiScale(gray_eq, scaleFactor=1.12, minNeighbors=6, minSize=(60, 60))
 
                 for (x, y, fw, fh) in dets:
                     x1, y1, x2, y2 = int(x), int(y), int(x + fw), int(y + fh)
-                    # Synthesize 5 facial keypoints for head pose geometry & gaze tracking
+                    if fw < 50 or fh < 50:
+                        continue
                     kps = [
                         [float(x + 0.32 * fw), float(y + 0.38 * fh)],
                         [float(x + 0.68 * fw), float(y + 0.38 * fh)],
@@ -306,12 +294,13 @@ class FaceEngine:
                         "bbox": (x1, y1, x2, y2),
                         "embedding": emb,
                         "landmarks": kps,
-                        "det_score": float(0.92)
+                        "det_score": float(0.75)
                     })
+                return self._nms_dedup(results)[:2]
             except Exception as e:
                 pass
 
-        return results
+        return []
 
     def match_embedding(self, query_emb: np.ndarray, enrolled_dict: Dict[int, np.ndarray], threshold: float = Config.FACE_SIMILARITY_THRESHOLD) -> Tuple[Optional[int], float]:
         """

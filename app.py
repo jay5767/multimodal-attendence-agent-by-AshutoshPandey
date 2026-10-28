@@ -388,6 +388,10 @@ def process_single_frame(frame: np.ndarray) -> dict:
     processed_h, processed_w = frame.shape[:2]
 
     detections = face_engine.detect_faces(frame)
+    # Anti-ghost filter: Cap detections to the number of enrolled students (Ashutosh Pandey only)
+    max_allowed = max(1, len(enrollment_mgr.enrolled_students_cache))
+    if len(detections) > max_allowed:
+        detections = sorted(detections, key=lambda d: d.get("det_score", 0.0), reverse=True)[:max_allowed]
     det_bboxes = [d["bbox"] for d in detections]
 
     # Real-time lean phone detection fallback (<0.01ms CPU load)
@@ -422,12 +426,13 @@ def process_single_frame(frame: np.ndarray) -> dict:
         total_movement += mov_score
         total_inactivity += inact_sec
 
-        # High-precision pose & behavioral state (detects sleeping, head down, drowsiness)
+        # High-precision pose & debounced behavioral state
         pose = head_pose_estimator.estimate_pose(
             frame,
             bbox,
             landmarks=landmarks,
-            inactivity_seconds=inact_sec
+            inactivity_seconds=inact_sec,
+            track_id=int(track_id)
         )
         yaw, pitch, is_looking = pose["yaw"], pose["pitch"], pose["is_looking_at_board"]
         behavior = pose.get("behavior", "Focused")
@@ -500,20 +505,21 @@ def process_single_frame(frame: np.ndarray) -> dict:
 
 
         if has_phone:
-
-            learner_eng = 18
-
+            target_eng = 18
         elif "Sleeping" in behavior or "Head Down" in behavior:
-
-            learner_eng = 8
-
+            target_eng = 8
         elif "Away" in behavior or "Distracted" in behavior or not is_looking:
-
-            learner_eng = int(max(15, min(42, 0.4 * gaze_pct + 0.3 * pitch_pct + 0.3 * move_pct)))
-
+            target_eng = int(max(18, min(40, 0.4 * gaze_pct + 0.3 * pitch_pct + 0.3 * move_pct)))
         else:
+            target_eng = int(min(98, max(88, 0.5 * gaze_pct + 0.3 * pitch_pct + 0.2 * alert_pct)))
 
-            learner_eng = int(min(99, max(78, 0.5 * gaze_pct + 0.3 * pitch_pct + 0.2 * alert_pct)))
+        # EMA smoothing per face to eliminate frame-to-frame jumping
+        if "student_eng_ema" not in state:
+            state["student_eng_ema"] = {}
+        prev_eng = state["student_eng_ema"].get(track_id, float(target_eng))
+        smoothed_eng = 0.82 * prev_eng + 0.18 * float(target_eng)
+        state["student_eng_ema"][track_id] = smoothed_eng
+        learner_eng = int(round(smoothed_eng))
 
 
 
@@ -627,7 +633,25 @@ def process_single_frame(frame: np.ndarray) -> dict:
 
     kpi_students = len(faces_payload)
 
-    kpi_avg = round(sum(f["engagement"] for f in faces_payload) / max(1, len(faces_payload))) if faces_payload else instant_gauge
+    # 10-Second Stable Rolling Average for KPI card
+    if "avg_10s_buffer" not in state:
+        state["avg_10s_buffer"] = []
+        state["last_10s_avg_time"] = time.time()
+        state["cached_10s_avg"] = None
+
+    instant_avg = round(sum(f["engagement"] for f in faces_payload) / max(1, len(faces_payload))) if faces_payload else instant_gauge
+    state["avg_10s_buffer"].append(instant_avg)
+
+    time_since_avg_update = now - state["last_10s_avg_time"]
+    if state["cached_10s_avg"] is None and len(state["avg_10s_buffer"]) >= 10:
+        state["cached_10s_avg"] = int(round(sum(state["avg_10s_buffer"]) / len(state["avg_10s_buffer"])))
+        state["last_10s_avg_time"] = now
+    elif time_since_avg_update >= 10.0 and state["avg_10s_buffer"]:
+        state["cached_10s_avg"] = int(round(sum(state["avg_10s_buffer"]) / len(state["avg_10s_buffer"])))
+        state["last_10s_avg_time"] = now
+        state["avg_10s_buffer"] = []
+
+    kpi_avg = state["cached_10s_avg"] if state["cached_10s_avg"] is not None else instant_avg
 
     is_session_active = bool(active_session_id is not None)
     present_count = len([r for r in attendance_records if r.get("status") in ("Present", "Late") or r.get("sustained_verified")])

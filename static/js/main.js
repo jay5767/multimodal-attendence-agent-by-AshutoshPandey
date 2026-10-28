@@ -598,7 +598,10 @@ function drawFaceOverlays(faces, phones = []) {
     }
   });
 
-  uniqueFaces.forEach((face, idx) => {
+  // Strictly limit to 1 face box for Ashutosh Pandey
+  const activeFaces = uniqueFaces.slice(0, 1);
+
+  activeFaces.forEach((face, idx) => {
     let [x1, y1, x2, y2] = face.bbox;
     const origX1 = x1 * scaleX;
     const origX2 = x2 * scaleX;
@@ -908,10 +911,15 @@ function updateKPIsUI(faces, data) {
   const sessionStatusEl = document.getElementById("kpi-session-status");
   const presentEl = document.getElementById("kpi-present-count");
 
-  const count = faces ? faces.length : 0;
+  const count = faces ? Math.min(1, faces.length) : 0;
   if (countEl) countEl.innerText = count;
 
-  let avg = 0;
+  // 10-Second Steady Average Engagement Refresh (as requested)
+  const now = Date.now();
+  window.kpiAvg10sBuffer = window.kpiAvg10sBuffer || [];
+  window.lastKpiAvgUpdateTime = window.lastKpiAvgUpdateTime || 0;
+  window.displayedKpiAvg = window.displayedKpiAvg || null;
+
   if (count > 0) {
     let sumEng = 0;
     faces.forEach(f => {
@@ -919,12 +927,30 @@ function updateKPIsUI(faces, data) {
       const eng = f.engagement !== undefined ? f.engagement : (isLooking ? 94 : 25);
       sumEng += eng;
     });
-    avg = Math.round(sumEng / count);
+    window.kpiAvg10sBuffer.push(Math.round(sumEng / count));
   } else if (data && data.gauge !== undefined) {
-    avg = Math.round(data.gauge);
+    window.kpiAvg10sBuffer.push(Math.round(data.gauge));
   }
 
-  if (avgEl) avgEl.innerText = count > 0 ? `${avg}%` : "--%";
+  // Initial populate after ~1.5s so card is not blank, then strictly refresh every 10 seconds
+  if (window.displayedKpiAvg === null && window.kpiAvg10sBuffer.length >= 12) {
+    const sum = window.kpiAvg10sBuffer.reduce((a, b) => a + b, 0);
+    window.displayedKpiAvg = Math.round(sum / window.kpiAvg10sBuffer.length);
+    window.lastKpiAvgUpdateTime = now;
+  } else if (now - window.lastKpiAvgUpdateTime >= 10000 && window.kpiAvg10sBuffer.length > 0) {
+    const sum = window.kpiAvg10sBuffer.reduce((a, b) => a + b, 0);
+    window.displayedKpiAvg = Math.round(sum / window.kpiAvg10sBuffer.length);
+    window.lastKpiAvgUpdateTime = now;
+    window.kpiAvg10sBuffer = [];
+  }
+
+  if (avgEl) {
+    if (data && data.kpi && data.kpi.avg !== undefined) {
+      avgEl.innerText = `${data.kpi.avg}%`;
+    } else {
+      avgEl.innerText = window.displayedKpiAvg !== null ? `${window.displayedKpiAvg}%` : "--%";
+    }
+  }
 
   const isSessionActive = data ? Boolean(data.session_active) : false;
   if (sessionStatusEl) {
