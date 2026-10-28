@@ -78,20 +78,20 @@ class HeadPoseEstimator:
 
                 # Realistic classroom behavioral state classification:
                 # Normal screen gaze is Focused (Green box).
-                # Head turned away (|yaw| > 32 deg) or head down/sleeping (pitch < -32 deg) is Distracted (Red box).
-                if pitch < -32.0 or (pitch < -24.0 and inactivity_seconds > 10.0):
+                # Head turned away (|yaw| > 35 deg) or head down/sleeping (pitch < -35 deg) is Distracted (Red box).
+                if pitch < -35.0 or (pitch < -26.0 and inactivity_seconds > 10.0):
                     behavior = "Sleeping / Head Down"
                     is_looking = False
                 elif inactivity_seconds > 30.0:
                     behavior = "Drowsy / Inactive"
                     is_looking = False
-                elif abs(yaw) > 32.0:
+                elif abs(yaw) > 35.0:
                     behavior = "Looking Away"
                     is_looking = False
-                elif pitch < -24.0:
+                elif pitch < -26.0:
                     behavior = "Looking Down"
                     is_looking = False
-                elif pitch > 26.0:
+                elif pitch > 30.0:
                     behavior = "Looking Up"
                     is_looking = False
                 else:

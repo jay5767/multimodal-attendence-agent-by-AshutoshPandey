@@ -534,7 +534,6 @@ function drawFaceOverlays(faces, phones = []) {
 
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-  // Use dynamic backend processed frame dimensions to guarantee 100.0% pixel-perfect scaling
   const frameW = (window.lastProcessedFrameSize && window.lastProcessedFrameSize[0]) ? window.lastProcessedFrameSize[0] : (hiddenCanvas ? hiddenCanvas.width : 640.0);
   const frameH = (window.lastProcessedFrameSize && window.lastProcessedFrameSize[1]) ? window.lastProcessedFrameSize[1] : (hiddenCanvas ? hiddenCanvas.height : 480.0);
 
@@ -570,12 +569,34 @@ function drawFaceOverlays(faces, phones = []) {
     });
   }
 
-  // 2. Draw Detected Faces matching user reference design
+  // 2. Draw Detected Faces with Strict Deduplication (Guarantee 1 box per person)
   if (!faces || faces.length === 0) return;
 
-  faces.forEach((face, idx) => {
+  const uniqueFaces = [];
+  faces.forEach(f => {
+    let isDupe = false;
+    for (const u of uniqueFaces) {
+      const [ux1, uy1, ux2, uy2] = u.bbox;
+      const [fx1, fy1, fx2, fy2] = f.bbox;
+      const ucx = (ux1 + ux2) / 2;
+      const ucy = (uy1 + uy2) / 2;
+      const fcx = (fx1 + fx2) / 2;
+      const fcy = (fy1 + fy2) / 2;
+      const dist = Math.hypot(fcx - ucx, fcy - ucy);
+      const minDim = Math.min(ux2 - ux1, uy2 - uy1, fx2 - fx1, fy2 - fy1);
+      // Suppress if bounding boxes overlap closely or same name has duplicate box
+      if (dist < minDim * 0.50 || (u.name === f.name && dist < minDim * 1.2)) {
+        isDupe = true;
+        break;
+      }
+    }
+    if (!isDupe) {
+      uniqueFaces.push(f);
+    }
+  });
+
+  uniqueFaces.forEach((face, idx) => {
     let [x1, y1, x2, y2] = face.bbox;
-    // Mirrored display calculation for natural webcam preview
     const origX1 = x1 * scaleX;
     const origX2 = x2 * scaleX;
     const drawX1 = overlayCanvas.width - origX2;
@@ -585,13 +606,12 @@ function drawFaceOverlays(faces, phones = []) {
     const boxW = drawX2 - drawX1;
     const boxH = drawY2 - drawY1;
 
-        // Determine state: Simple, accurate Green / Red classification
+    // Determine state: Simple, accurate Green / Red classification
     const isLooking = Boolean(face.is_looking);
     const behavior = face.behavior || (isLooking ? "Focused" : "Distracted");
-    const score = face.engagement !== undefined ? face.engagement : (isLooking ? 94 : 22);
 
     let isDistracted = false;
-    let statusText = "Focused";
+    let statusText = "";
     let boxColor = "#10B981"; // Emerald Green for attentive / focused
 
     if (face.has_phone || behavior.includes("Phone") || behavior.includes("PHONE")) {
@@ -657,9 +677,16 @@ function drawFaceOverlays(faces, phones = []) {
     overlayCtx.lineTo(drawX2, drawY2 - cornerSize);
     overlayCtx.stroke();
 
-    // 3. Single Sleek Floating Pill Above Face Box
+    // 3. Floating Pill Above Box: Just Student Name when focused; Alert when distracted
     overlayCtx.font = "600 13px Inter, -apple-system, sans-serif";
-    const labelText = `${displayName}  •  ${statusText} (${score}%)`;
+    let labelText;
+    if (isDistracted) {
+      labelText = `${displayName}  •  ${statusText}`;
+    } else {
+      // User request: remove the "focused" part from the detection
+      labelText = displayName;
+    }
+
     const textWidth = Math.ceil(overlayCtx.measureText(labelText).width);
     const pillW = textWidth + 34;
     const pillH = 30;
@@ -686,7 +713,7 @@ function drawFaceOverlays(faces, phones = []) {
     overlayCtx.fill();
     overlayCtx.shadowBlur = 0;
 
-    // Name & Status Text
+    // Student Name text
     overlayCtx.fillStyle = "#FFFFFF";
     overlayCtx.textAlign = "left";
     overlayCtx.textBaseline = "middle";

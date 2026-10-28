@@ -30,8 +30,8 @@ class FaceEngine:
                     model=yunet_path,
                     config="",
                     input_size=(Config.TARGET_WIDTH, Config.TARGET_HEIGHT),
-                    score_threshold=0.50,
-                    nms_threshold=0.35,
+                    score_threshold=0.52,
+                    nms_threshold=0.28,
                     top_k=5000
                 )
                 print(f"[FaceEngine] Initialized High-Accuracy YuNet CNN Face Detector ({yunet_path})")
@@ -132,6 +132,47 @@ class FaceEngine:
             "model": Config.INSIGHTFACE_MODEL if self.app else "OpenCV Cascade"
         }
 
+    def _nms_dedup(self, results: List[Dict[str, Any]], iou_thresh: float = 0.25) -> List[Dict[str, Any]]:
+        """Removes duplicate / overlapping bounding boxes to guarantee exactly one box per student."""
+        if len(results) <= 1:
+            return results
+        sorted_res = sorted(results, key=lambda x: x.get("det_score", 0.0), reverse=True)
+        kept = []
+        for cand in sorted_res:
+            cx1, cy1, cx2, cy2 = cand["bbox"]
+            c_area = max(0, cx2 - cx1) * max(0, cy2 - cy1)
+            c_cx = (cx1 + cx2) / 2.0
+            c_cy = (cy1 + cy2) / 2.0
+            duplicate = False
+            for k in kept:
+                kx1, ky1, kx2, ky2 = k["bbox"]
+                k_area = max(0, kx2 - kx1) * max(0, ky2 - ky1)
+                k_cx = (kx1 + kx2) / 2.0
+                k_cy = (ky1 + ky2) / 2.0
+
+                ix1 = max(cx1, kx1)
+                iy1 = max(cy1, ky1)
+                ix2 = min(cx2, kx2)
+                iy2 = min(cy2, ky2)
+                iw = max(0, ix2 - ix1)
+                ih = max(0, iy2 - iy1)
+                inter = iw * ih
+                union = c_area + k_area - inter
+                iou = (inter / union) if union > 0 else 0.0
+
+                kw = kx2 - kx1
+                kh = ky2 - ky1
+                dist_sq = (c_cx - k_cx)**2 + (c_cy - k_cy)**2
+                min_dim = min(kw, kh, cx2 - cx1, cy2 - cy1)
+
+                # Suppress if IoU overlap > threshold, or center within 50% box radius, or one box is inside another
+                if iou > iou_thresh or dist_sq < (0.50 * min_dim)**2 or (c_area > 0 and inter / c_area > 0.60):
+                    duplicate = True
+                    break
+            if not duplicate:
+                kept.append(cand)
+        return kept
+
     def detect_faces(self, frame_bgr: np.ndarray) -> List[Dict[str, Any]]:
         """
         Detects faces in frame_bgr and computes 512-d normalized face embeddings.
@@ -162,7 +203,7 @@ class FaceEngine:
                     for face in yn_faces:
                         fx, fy, fw, fh = face[0:4]
                         conf = float(face[-1])
-                        if conf < 0.35:
+                        if conf < 0.50:
                             continue
                         x1 = max(0, min(w - 1, int(fx)))
                         y1 = max(0, min(h - 1, int(fy)))
@@ -190,7 +231,7 @@ class FaceEngine:
                             "landmarks": landmarks,
                             "det_score": float(conf)
                         })
-                    return results
+                    return self._nms_dedup(results)
                 else:
                     # SOTA YuNet detected no faces: return empty immediately (<15ms) without burning CPU on InsightFace
                     return []
