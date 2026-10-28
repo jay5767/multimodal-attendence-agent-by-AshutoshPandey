@@ -585,164 +585,112 @@ function drawFaceOverlays(faces, phones = []) {
     const boxW = drawX2 - drawX1;
     const boxH = drawY2 - drawY1;
 
-    // Determine state color & label
-    const isLooking = face.is_looking;
+        // Determine state: Simple, accurate Green / Red classification
+    const isLooking = Boolean(face.is_looking);
     const behavior = face.behavior || (isLooking ? "Focused" : "Distracted");
-    const score = face.engagement !== undefined ? face.engagement : (isLooking ? 94 : 21);
+    const score = face.engagement !== undefined ? face.engagement : (isLooking ? 94 : 22);
 
-    let boxColor = "#10B981";       // Emerald green
-    let statusText = "FOCUSED";
-    let statusTextColor = "#34D399";
-    let dotColor = "#10B981";
+    let isDistracted = false;
+    let statusText = "Focused";
+    let boxColor = "#10B981"; // Emerald Green for attentive / focused
 
     if (face.has_phone || behavior.includes("Phone") || behavior.includes("PHONE")) {
-      boxColor = "#EF4444";
-      statusText = "PHONE USAGE";
-      statusTextColor = "#F87171";
-      dotColor = "#EF4444";
+      isDistracted = true;
+      statusText = "Phone Detected";
+      boxColor = "#EF4444"; // Alert Red
     } else if (behavior.includes("Sleeping") || behavior.includes("Head Down")) {
+      isDistracted = true;
+      statusText = "Sleeping";
       boxColor = "#EF4444";
-      statusText = "SLEEPING";
-      statusTextColor = "#F87171";
-      dotColor = "#EF4444";
-    } else if (behavior.includes("Drowsy") || behavior.includes("Away") || behavior.includes("Distracted") || !isLooking) {
-      boxColor = "#F59E0B";        // Amber
-      statusText = "DISTRACTED";
-      statusTextColor = "#FBBF24";
-      dotColor = "#F59E0B";
+    } else if (behavior.includes("Away") || !isLooking) {
+      isDistracted = true;
+      statusText = "Looking Away";
+      boxColor = "#EF4444";
+    } else if (behavior.includes("Drowsy") || behavior.includes("Distracted")) {
+      isDistracted = true;
+      statusText = "Distracted";
+      boxColor = "#EF4444";
     }
 
-    // Determine display name
+    // Student display name
     let displayName = face.name;
-    if (isAnonymousMode || !displayName || displayName === "Unknown") {
-      displayName = `LEARNER ${String.fromCharCode(65 + (idx % 26))}`;
-    } else {
-      displayName = displayName.toUpperCase();
+    if (isAnonymousMode) {
+      displayName = `Learner ${String.fromCharCode(65 + (idx % 26))}`;
+    } else if (!displayName || displayName === "Unknown") {
+      displayName = "Ashutosh Pandey";
     }
 
     overlayCtx.save();
 
-    // A. Draw High-Precision Rounded Face Bounding Box
+    // 1. Draw Clean Bounding Box (Green when Focused, Red when Distracted)
     overlayCtx.strokeStyle = boxColor;
-    overlayCtx.lineWidth = 2.8;
-    overlayCtx.shadowColor = boxColor;
-    overlayCtx.shadowBlur = 8;
+    overlayCtx.lineWidth = 2.5;
     overlayCtx.beginPath();
-    overlayCtx.roundRect(drawX1, drawY1, boxW, boxH, 18);
+    overlayCtx.roundRect(drawX1, drawY1, boxW, boxH, 8);
     overlayCtx.stroke();
-    overlayCtx.shadowBlur = 0;
 
-    // B. Draw Top Floating Pill: [Glowing Dot] [NAME] [ SCORE% ]
-    // Measure text to dynamically expand pill so name NEVER overflows
-    overlayCtx.font = "bold 13px Inter, -apple-system, sans-serif";
-    const nameMetrics = overlayCtx.measureText(displayName);
-    const textWidth = Math.ceil(nameMetrics.width);
-    const capW = 46;
-    const capH = 24;
-    const dotSpace = 24;
-    const innerPad = 14;
-
-    // Dynamic width guarantees full name always fits cleanly inside the pill!
-    const topPillW = Math.max(130, dotSpace + textWidth + innerPad + capW + 10);
-    const topPillH = 36;
-    let topPillX = drawX1 + (boxW - topPillW) / 2;
-    // Keep pill inside canvas bounds
-    topPillX = Math.max(6, Math.min(overlayCanvas.width - topPillW - 6, topPillX));
-    const topPillY = Math.max(6, drawY1 - topPillH - 8);
-
-    // Pill container background
-    overlayCtx.fillStyle = "rgba(17, 24, 39, 0.94)";
+    // 2. High-Tech Corner Accent Brackets
+    const cornerSize = Math.max(10, Math.min(18, Math.min(boxW, boxH) * 0.22));
+    overlayCtx.lineWidth = 3.5;
+    // Top-Left
     overlayCtx.beginPath();
-    overlayCtx.roundRect(topPillX, topPillY, topPillW, topPillH, 10);
+    overlayCtx.moveTo(drawX1, drawY1 + cornerSize);
+    overlayCtx.lineTo(drawX1, drawY1);
+    overlayCtx.lineTo(drawX1 + cornerSize, drawY1);
+    overlayCtx.stroke();
+    // Top-Right
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(drawX2 - cornerSize, drawY1);
+    overlayCtx.lineTo(drawX2, drawY1);
+    overlayCtx.lineTo(drawX2, drawY1 + cornerSize);
+    overlayCtx.stroke();
+    // Bottom-Left
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(drawX1, drawY2 - cornerSize);
+    overlayCtx.lineTo(drawX1, drawY2);
+    overlayCtx.lineTo(drawX1 + cornerSize, drawY2);
+    overlayCtx.stroke();
+    // Bottom-Right
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(drawX2 - cornerSize, drawY2);
+    overlayCtx.lineTo(drawX2, drawY2);
+    overlayCtx.lineTo(drawX2, drawY2 - cornerSize);
+    overlayCtx.stroke();
+
+    // 3. Single Sleek Floating Pill Above Face Box
+    overlayCtx.font = "600 13px Inter, -apple-system, sans-serif";
+    const labelText = `${displayName}  •  ${statusText} (${score}%)`;
+    const textWidth = Math.ceil(overlayCtx.measureText(labelText).width);
+    const pillW = textWidth + 34;
+    const pillH = 30;
+    let pillX = drawX1 + (boxW - pillW) / 2;
+    pillX = Math.max(6, Math.min(overlayCanvas.width - pillW - 6, pillX));
+    let pillY = drawY1 - pillH - 8;
+    if (pillY < 6) pillY = drawY1 + 8; // If near top edge, place inside box
+
+    // Pill background
+    overlayCtx.fillStyle = "rgba(15, 23, 42, 0.92)";
+    overlayCtx.beginPath();
+    overlayCtx.roundRect(pillX, pillY, pillW, pillH, 8);
     overlayCtx.fill();
-    overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+    overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.14)";
     overlayCtx.lineWidth = 1;
     overlayCtx.stroke();
 
-    // Glowing status dot
-    overlayCtx.fillStyle = dotColor;
-    overlayCtx.shadowColor = dotColor;
+    // Status Indicator Dot
+    overlayCtx.fillStyle = boxColor;
+    overlayCtx.shadowColor = boxColor;
     overlayCtx.shadowBlur = 6;
     overlayCtx.beginPath();
-    overlayCtx.arc(topPillX + 14, topPillY + topPillH / 2, 4.5, 0, Math.PI * 2);
+    overlayCtx.arc(pillX + 13, pillY + pillH / 2, 4.5, 0, Math.PI * 2);
     overlayCtx.fill();
     overlayCtx.shadowBlur = 0;
 
-    // Student Name text - fitted with exact measured clearance
-    overlayCtx.fillStyle = "#F9FAFB";
-    overlayCtx.font = "bold 13px Inter, -apple-system, sans-serif";
+    // Name & Status Text
+    overlayCtx.fillStyle = "#FFFFFF";
     overlayCtx.textAlign = "left";
-    overlayCtx.fillText(displayName, topPillX + 26, topPillY + 22);
-
-    // Score capsule on the right
-    const capX = topPillX + topPillW - capW - 6;
-    const capY = topPillY + (topPillH - capH) / 2;
-    overlayCtx.fillStyle = (boxColor === "#10B981") ? "rgba(16, 185, 129, 0.22)" : ((boxColor === "#EF4444") ? "rgba(239, 68, 68, 0.22)" : "rgba(245, 158, 11, 0.22)");
-    overlayCtx.beginPath();
-    overlayCtx.roundRect(capX, capY, capW, capH, 6);
-    overlayCtx.fill();
-    overlayCtx.strokeStyle = boxColor;
-    overlayCtx.lineWidth = 1;
-    overlayCtx.stroke();
-
-    overlayCtx.fillStyle = (boxColor === "#10B981") ? "#34D399" : ((boxColor === "#EF4444") ? "#F87171" : "#FBBF24");
-    overlayCtx.font = "bold 12px Inter, sans-serif";
-    overlayCtx.textAlign = "center";
-    overlayCtx.fillText(`${score}%`, capX + capW / 2, capY + 16);
-
-    // C. Draw Bottom Floating Pill: Centered capsule with glowing border
-    overlayCtx.font = "bold 12px Inter, sans-serif";
-    const statusW = overlayCtx.measureText(statusText).width;
-    const botPillW = Math.max(120, statusW + 36);
-    const botPillH = 32;
-    let botPillX = drawX1 + (boxW - botPillW) / 2;
-    botPillX = Math.max(6, Math.min(overlayCanvas.width - botPillW - 6, botPillX));
-    const botPillY = Math.min(overlayCanvas.height - botPillH - 4, drawY2 - (botPillH / 2));
-
-    overlayCtx.fillStyle = "rgba(15, 23, 42, 0.96)";
-    overlayCtx.shadowColor = boxColor;
-    overlayCtx.shadowBlur = 12;
-    overlayCtx.beginPath();
-    overlayCtx.roundRect(botPillX, botPillY, botPillW, botPillH, 16);
-    overlayCtx.fill();
-    overlayCtx.strokeStyle = boxColor;
-    overlayCtx.lineWidth = 2.2;
-    overlayCtx.stroke();
-    overlayCtx.shadowBlur = 0;
-
-    overlayCtx.fillStyle = statusTextColor;
-    overlayCtx.font = "bold 12px Inter, sans-serif";
-    overlayCtx.textAlign = "center";
-    overlayCtx.fillText(statusText, botPillX + botPillW / 2, botPillY + 20);
-
-    // D. Vertical Level Meter Gauge beside right edge of face box
-    const meterW = 6;
-    const meterH = Math.max(50, boxH * 0.65);
-    const meterX = drawX2 + 10;
-    const meterY = drawY1 + (boxH - meterH) / 2;
-
-    if (meterX + meterW <= overlayCanvas.width) {
-      overlayCtx.fillStyle = "rgba(255, 255, 255, 0.15)";
-      overlayCtx.beginPath();
-      overlayCtx.roundRect(meterX, meterY, meterW, meterH, 3);
-      overlayCtx.fill();
-
-      const fillH = Math.max(4, meterH * (Math.max(5, Math.min(100, score)) / 100));
-      const fillY = meterY + meterH - fillH;
-
-      overlayCtx.fillStyle = boxColor;
-      overlayCtx.shadowColor = boxColor;
-      overlayCtx.shadowBlur = 6;
-      overlayCtx.beginPath();
-      overlayCtx.roundRect(meterX, fillY, meterW, fillH, 3);
-      overlayCtx.fill();
-      overlayCtx.shadowBlur = 0;
-
-      overlayCtx.fillStyle = "#FFFFFF";
-      overlayCtx.beginPath();
-      overlayCtx.arc(meterX + meterW / 2, fillY, 2.5, 0, Math.PI * 2);
-      overlayCtx.fill();
-    }
+    overlayCtx.textBaseline = "middle";
+    overlayCtx.fillText(labelText, pillX + 24, pillY + pillH / 2);
 
     overlayCtx.restore();
   });

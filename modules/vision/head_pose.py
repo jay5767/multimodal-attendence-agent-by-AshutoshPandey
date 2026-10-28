@@ -71,29 +71,31 @@ class HeadPoseEstimator:
                 # When looking down/sleeping: nose drops near mouth level -> ratio increases
                 # When looking up: nose rises towards eyes -> ratio decreases
                 nose_ratio = float((nose[1] - eye_mid[1]) / face_h)
-                pitch = float(-(nose_ratio - 0.44) * 90.0)
+                pitch = float(-(nose_ratio - 0.54) * 80.0)
 
                 # Roll: eye horizon angle
                 roll = float(np.degrees(np.arctan2(re[1] - le[1], re[0] - le[0])))
 
-                # Realistic classroom behavioral state classification
-                if pitch < -24.0 or (pitch < -16.0 and inactivity_seconds > 8.0):
-                    behavior = "Sleeping / Head Down"
-                    is_looking = False
-                elif inactivity_seconds > 20.0:
-                    behavior = "Drowsy / Inactive"
-                    is_looking = False
-                elif pitch < -16.0:
-                    behavior = "Looking Down / Reading"
-                    is_looking = False
-                elif abs(yaw) > 28.0:
-                    behavior = "Looking Away"
-                    is_looking = False
-                elif pitch > 22.0:
-                    behavior = "Looking Up"
-                    is_looking = False
-                else:
-                    behavior = "Focused"
+                # Realistic classroom behavioral state classification:
+                # Normal screen gaze is Focused (Green box).
+                # Head turned away (|yaw| > 32 deg) or head down/sleeping (pitch < -32 deg) is Distracted (Red box).
+                if pitch < -32.0 or (pitch < -24.0 and inactivity_seconds > 10.0):
+                    behavior = "Sleeping / Head Down"
+                    is_looking = False
+                elif inactivity_seconds > 30.0:
+                    behavior = "Drowsy / Inactive"
+                    is_looking = False
+                elif abs(yaw) > 32.0:
+                    behavior = "Looking Away"
+                    is_looking = False
+                elif pitch < -24.0:
+                    behavior = "Looking Down"
+                    is_looking = False
+                elif pitch > 26.0:
+                    behavior = "Looking Up"
+                    is_looking = False
+                else:
+                    behavior = "Focused"
                     is_looking = True
 
                 return {
