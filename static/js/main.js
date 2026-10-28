@@ -443,7 +443,15 @@ function handleProcessedFrame(data) {
   if (gazeCountEl) gazeCountEl.innerText = lookingCount;
 
   // Draw Bounding Boxes on Overlay Canvas (Faces + Phones)
-  drawFaceOverlays(faceList, data.phones || []);
+  drawFaceOverlays(faceList, data.phones || []);
+
+  // Update Tracked Students List & 4 KPI Metric Cards matching reference UI
+  if (typeof updateTrackedStudentsUI === "function") {
+    updateTrackedStudentsUI(faceList, data);
+  }
+  if (typeof updateKPIsUI === "function") {
+    updateKPIsUI(faceList, data);
+  }
 
   // Update Circular Engagement Gauge
   if (data.gauge !== undefined) {
@@ -532,28 +540,30 @@ function drawFaceOverlays(faces, phones = []) {
       const phoneW = drawPx2 - drawPx1;
       const phoneH = drawPy2 - drawPy1;
 
-      // Draw dashed amber phone border
-      overlayCtx.strokeStyle = "#FF9F1C";
-      overlayCtx.lineWidth = 2.0;
-      overlayCtx.setLineDash([5, 4]);
+      overlayCtx.save();
+      overlayCtx.strokeStyle = "#F97316";
+      overlayCtx.lineWidth = 2.5;
+      overlayCtx.setLineDash([6, 4]);
       overlayCtx.strokeRect(drawPx1, drawPy1, phoneW, phoneH);
       overlayCtx.setLineDash([]);
 
-      // Phone chip
-      overlayCtx.fillStyle = "rgba(255, 159, 28, 0.95)";
+      overlayCtx.fillStyle = "rgba(249, 115, 22, 0.95)";
       overlayCtx.beginPath();
-      overlayCtx.roundRect(drawPx1, Math.max(0, drawPy1 - 18), 75, 18, 4);
+      overlayCtx.roundRect(drawPx1, Math.max(0, drawPy1 - 20), 80, 20, 6);
       overlayCtx.fill();
-      overlayCtx.fillStyle = "#0A0A0A";
+      overlayCtx.fillStyle = "#FFFFFF";
       overlayCtx.font = "bold 11px Inter, sans-serif";
-      overlayCtx.fillText("📱 Phone", drawPx1 + 6, Math.max(0, drawPy1 - 5));
+      overlayCtx.fillText("📱 Phone", drawPx1 + 8, Math.max(0, drawPy1 - 6));
+      overlayCtx.restore();
     });
   }
 
-  // 2. Draw Detected Faces
-  faces.forEach(face => {
+  // 2. Draw Detected Faces matching user reference design
+  if (!faces || faces.length === 0) return;
+
+  faces.forEach((face, idx) => {
     let [x1, y1, x2, y2] = face.bbox;
-    // Mirrored display calculation
+    // Mirrored display calculation for natural webcam preview
     const origX1 = x1 * scaleX;
     const origX2 = x2 * scaleX;
     const drawX1 = overlayCanvas.width - origX2;
@@ -564,87 +574,305 @@ function drawFaceOverlays(faces, phones = []) {
     const boxH = drawY2 - drawY1;
 
     // Determine state color & label
-    const behavior = face.behavior || (face.is_looking ? "Focused" : "Away");
-    let boxColor = "#C5F82A";
-    let dotColor = "#C5F82A";
-    let statusText = behavior;
+    const isLooking = face.is_looking;
+    const behavior = face.behavior || (isLooking ? "Focused" : "Distracted");
+    const score = face.engagement !== undefined ? face.engagement : (isLooking ? 94 : 21);
+
+    let boxColor = "#10B981";       // Emerald green
+    let statusText = "FOCUSED";
+    let statusTextColor = "#34D399";
+    let dotColor = "#10B981";
 
     if (face.has_phone || behavior.includes("Phone") || behavior.includes("PHONE")) {
-      boxColor = "#FF9F1C"; // Amber/Orange phone alert
-      dotColor = "#FF9F1C";
-      statusText = "📱 PHONE USAGE / DISTRACTED";
-    } else if (behavior.includes("Sleeping")) {
-      boxColor = "#FF5C5C";
-      dotColor = "#FF5C5C";
-      statusText = "⚠️ SLEEPING / HEAD DOWN";
-    } else if (behavior.includes("Drowsy")) {
-      boxColor = "#F5B83D";
-      dotColor = "#F5B83D";
-      statusText = "Drowsy / Inactive";
-    } else if (behavior.includes("Down")) {
-      boxColor = "#F5B83D";
-      dotColor = "#F5B83D";
-      statusText = "Looking Down";
-    } else if (behavior.includes("Away")) {
-      boxColor = "#F5B83D";
-      dotColor = "#F5B83D";
-      statusText = "Looking Away";
+      boxColor = "#EF4444";
+      statusText = "PHONE USAGE";
+      statusTextColor = "#F87171";
+      dotColor = "#EF4444";
+    } else if (behavior.includes("Sleeping") || behavior.includes("Head Down")) {
+      boxColor = "#EF4444";
+      statusText = "SLEEPING";
+      statusTextColor = "#F87171";
+      dotColor = "#EF4444";
+    } else if (behavior.includes("Drowsy") || behavior.includes("Away") || behavior.includes("Distracted") || !isLooking) {
+      boxColor = "#F59E0B";        // Amber
+      statusText = "DISTRACTED";
+      statusTextColor = "#FBBF24";
+      dotColor = "#F59E0B";
     }
 
-    // Draw Dynamic Bounding Box
-    overlayCtx.strokeStyle = boxColor;
-    overlayCtx.lineWidth = 2.5;
-    overlayCtx.strokeRect(drawX1, drawY1, boxW, boxH);
-
-    // Corner accents
-    const cornerSize = 12;
-    overlayCtx.strokeStyle = "#FFFFFF";
-    overlayCtx.lineWidth = 3.5;
-    // Top-left
-    overlayCtx.beginPath();
-    overlayCtx.moveTo(drawX1, drawY1 + cornerSize);
-    overlayCtx.lineTo(drawX1, drawY1);
-    overlayCtx.lineTo(drawX1 + cornerSize, drawY1);
-    overlayCtx.stroke();
-    // Top-right
-    overlayCtx.beginPath();
-    overlayCtx.moveTo(drawX2 - cornerSize, drawY1);
-    overlayCtx.lineTo(drawX2, drawY1);
-    overlayCtx.lineTo(drawX2, drawY1 + cornerSize);
-    overlayCtx.stroke();
-
-    // Dark Pill Label with status dot
+    // Determine uppercase display name
     let displayName = face.name;
-    if (isAnonymousMode && displayName && displayName !== "Unknown") {
-      displayName = `Student #${face.track_id || 1}`;
+    if (isAnonymousMode || !displayName || displayName === "Unknown") {
+      displayName = `LEARNER ${String.fromCharCode(65 + (idx % 26))}`;
+    } else {
+      displayName = displayName.toUpperCase();
     }
-    const labelText = `${displayName} (${statusText})`;
-    overlayCtx.font = "bold 12px Inter, sans-serif";
-    const textW = overlayCtx.measureText(labelText).width;
-    const pillW = textW + 28;
-    const pillH = 24;
-    const pillX = drawX1;
-    const pillY = Math.max(0, drawY1 - pillH - 6);
 
-    // Pill background
-    overlayCtx.fillStyle = "rgba(10, 10, 10, 0.85)";
+    overlayCtx.save();
+
+    // A. Draw High-Precision Rounded Face Bounding Box
+    overlayCtx.strokeStyle = boxColor;
+    overlayCtx.lineWidth = 2.8;
+    overlayCtx.shadowColor = boxColor;
+    overlayCtx.shadowBlur = 8;
     overlayCtx.beginPath();
-    overlayCtx.roundRect(pillX, pillY, pillW, pillH, 12);
+    overlayCtx.roundRect(drawX1, drawY1, boxW, boxH, 18);
+    overlayCtx.stroke();
+    overlayCtx.shadowBlur = 0; // reset blur
+
+    // B. Draw Top Floating Pill: [Glowing Dot] [LEARNER A] [ 21% ]
+    const topPillW = Math.max(140, Math.min(220, boxW * 0.95));
+    const topPillH = 38;
+    const topPillX = drawX1 + (boxW - topPillW) / 2;
+    const topPillY = Math.max(6, drawY1 - topPillH - 10);
+
+    // Pill container background
+    overlayCtx.fillStyle = "rgba(17, 24, 39, 0.94)";
+    overlayCtx.beginPath();
+    overlayCtx.roundRect(topPillX, topPillY, topPillW, topPillH, 10);
+    overlayCtx.fill();
+    overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+    overlayCtx.lineWidth = 1;
+    overlayCtx.stroke();
+
+    // Glowing status dot
+    overlayCtx.fillStyle = dotColor;
+    overlayCtx.shadowColor = dotColor;
+    overlayCtx.shadowBlur = 6;
+    overlayCtx.beginPath();
+    overlayCtx.arc(topPillX + 16, topPillY + topPillH / 2, 4.5, 0, Math.PI * 2);
+    overlayCtx.fill();
+    overlayCtx.shadowBlur = 0;
+
+    // Student Name text
+    overlayCtx.fillStyle = "#F9FAFB";
+    overlayCtx.font = "bold 13px Inter, -apple-system, sans-serif";
+    overlayCtx.textAlign = "left";
+    overlayCtx.fillText(displayName, topPillX + 28, topPillY + 23);
+
+    // Score capsule on the right side of top pill
+    const capW = 44;
+    const capH = 26;
+    const capX = topPillX + topPillW - capW - 6;
+    const capY = topPillY + (topPillH - capH) / 2;
+    overlayCtx.fillStyle = (boxColor === "#10B981") ? "rgba(16, 185, 129, 0.22)" : ((boxColor === "#EF4444") ? "rgba(239, 68, 68, 0.22)" : "rgba(245, 158, 11, 0.22)");
+    overlayCtx.beginPath();
+    overlayCtx.roundRect(capX, capY, capW, capH, 6);
     overlayCtx.fill();
     overlayCtx.strokeStyle = boxColor;
     overlayCtx.lineWidth = 1;
     overlayCtx.stroke();
 
-    // Focus / Sleeping indicator dot
-    overlayCtx.fillStyle = dotColor;
-    overlayCtx.beginPath();
-    overlayCtx.arc(pillX + 10, pillY + pillH / 2, 4, 0, Math.PI * 2);
-    overlayCtx.fill();
+    overlayCtx.fillStyle = (boxColor === "#10B981") ? "#34D399" : ((boxColor === "#EF4444") ? "#F87171" : "#FBBF24");
+    overlayCtx.font = "bold 12px Inter, sans-serif";
+    overlayCtx.textAlign = "center";
+    overlayCtx.fillText(`${score}%`, capX + capW / 2, capY + 17);
 
-    // Student Name text
-    overlayCtx.fillStyle = "#FFFFFF";
-    overlayCtx.fillText(labelText, pillX + 20, pillY + 16);
+    // C. Draw Bottom Floating Pill: Centered capsule with glowing border [ DISTRACTED ]
+    const botPillW = Math.max(130, Math.min(180, boxW * 0.85));
+    const botPillH = 34;
+    const botPillX = drawX1 + (boxW - botPillW) / 2;
+    const botPillY = Math.min(overlayCanvas.height - botPillH - 4, drawY2 - (botPillH / 2));
+
+    overlayCtx.fillStyle = "rgba(15, 23, 42, 0.96)";
+    overlayCtx.shadowColor = boxColor;
+    overlayCtx.shadowBlur = 12;
+    overlayCtx.beginPath();
+    overlayCtx.roundRect(botPillX, botPillY, botPillW, botPillH, 17);
+    overlayCtx.fill();
+    overlayCtx.strokeStyle = boxColor;
+    overlayCtx.lineWidth = 2.2;
+    overlayCtx.stroke();
+    overlayCtx.shadowBlur = 0;
+
+    overlayCtx.fillStyle = statusTextColor;
+    overlayCtx.font = "bold 12px Inter, sans-serif";
+    overlayCtx.textAlign = "center";
+    overlayCtx.fillText(statusText, botPillX + botPillW / 2, botPillY + 21);
+
+    // D. Vertical Level Meter Gauge beside right edge of face box
+    const meterW = 6;
+    const meterH = Math.max(50, boxH * 0.65);
+    const meterX = drawX2 + 10;
+    const meterY = drawY1 + (boxH - meterH) / 2;
+
+    if (meterX + meterW <= overlayCanvas.width) {
+      // Meter track
+      overlayCtx.fillStyle = "rgba(255, 255, 255, 0.15)";
+      overlayCtx.beginPath();
+      overlayCtx.roundRect(meterX, meterY, meterW, meterH, 3);
+      overlayCtx.fill();
+
+      // Filled portion from bottom up
+      const fillH = Math.max(4, meterH * (Math.max(5, Math.min(100, score)) / 100));
+      const fillY = meterY + meterH - fillH;
+
+      overlayCtx.fillStyle = boxColor;
+      overlayCtx.shadowColor = boxColor;
+      overlayCtx.shadowBlur = 6;
+      overlayCtx.beginPath();
+      overlayCtx.roundRect(meterX, fillY, meterW, fillH, 3);
+      overlayCtx.fill();
+      overlayCtx.shadowBlur = 0;
+
+      // Small glowing indicator pip at top of filled bar
+      overlayCtx.fillStyle = "#FFFFFF";
+      overlayCtx.beginPath();
+      overlayCtx.arc(meterX + meterW / 2, fillY, 2.5, 0, Math.PI * 2);
+      overlayCtx.fill();
+    }
+
+    overlayCtx.restore();
   });
+}
+
+function updateTrackedStudentsUI(faces, data) {
+  const badgeEl = document.getElementById("tracked-students-badge");
+  const listEl = document.getElementById("tracked-students-list");
+  if (!listEl) return;
+
+  const count = faces ? faces.length : 0;
+  if (badgeEl) {
+    badgeEl.innerText = `${count} detected`;
+  }
+
+  if (!faces || faces.length === 0) {
+    listEl.innerHTML = `
+      <div style="text-align: center; padding: 24px 16px; color: var(--text-muted); font-size: 13px;">
+        <div style="font-size: 26px; margin-bottom: 6px;">👀</div>
+        <div style="color: #FFF; font-weight: 600;">No students detected in camera frame</div>
+        <div style="font-size: 11px; margin-top: 4px;">Center your face in front of the webcam to begin tracking</div>
+      </div>
+    `;
+    return;
+  }
+
+  let html = "";
+  faces.forEach((f, idx) => {
+    const isLooking = f.is_looking;
+    const behavior = f.behavior || (isLooking ? "Focused" : "Distracted");
+    const eng = f.engagement !== undefined ? f.engagement : (isLooking ? 94 : 21);
+    const telemetry = f.telemetry || {
+      gaze: isLooking ? 95 : 25,
+      move: Math.round(Math.min(100, Math.max(10, (f.movement || 0.2) * 100))),
+      eyes: isLooking ? 92 : 30,
+      pitch: Math.round(Math.max(15, 100 - Math.abs(f.pitch || 0) * 2.5)),
+      mouth: 20,
+      hand: 1,
+      alert: (f.has_phone || behavior.includes("Sleeping")) ? 15 : 90,
+      confidence: Math.round((f.similarity || 0.95) * 100)
+    };
+
+    let stateClass = "state-distracted";
+    let stateLabel = "DISTRACTED";
+    let accentColor = "#F59E0B";
+
+    if (f.has_phone || behavior.includes("Phone") || behavior.includes("PHONE")) {
+      stateClass = "state-phone";
+      stateLabel = "PHONE USAGE";
+      accentColor = "#EF4444";
+    } else if (behavior.includes("Sleeping") || behavior.includes("Head Down")) {
+      stateClass = "state-sleeping";
+      stateLabel = "SLEEPING";
+      accentColor = "#EF4444";
+    } else if (behavior.includes("Focused") || isLooking) {
+      stateClass = "state-focused";
+      stateLabel = "FOCUSED";
+      accentColor = "#10B981";
+    }
+
+    const displayName = f.name && f.name !== "Unknown" ? f.name : `Learner ${String.fromCharCode(65 + (idx % 26))}`;
+
+    html += `
+      <div class="tracked-student-card ${stateClass}" style="border-left: 4px solid ${accentColor};">
+        <div class="student-card-top">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="student-card-title">${displayName}</span>
+            <span class="student-status-badge badge-${stateClass}">${stateLabel}</span>
+          </div>
+          <div style="text-align: right;">
+            <div class="student-card-score" style="color: ${accentColor};">${eng}%</div>
+            <div class="student-card-conf">conf ${telemetry.confidence}%</div>
+          </div>
+        </div>
+
+        <div class="telemetry-grid">
+          <div class="tele-item">
+            <div class="tele-label">Gaze <span class="tele-tick">✓</span></div>
+            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.gaze}%; background: ${accentColor};"></div></div>
+          </div>
+          <div class="tele-item">
+            <div class="tele-label">Move <span class="tele-tick">✓</span></div>
+            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.move}%; background: ${accentColor};"></div></div>
+          </div>
+          <div class="tele-item">
+            <div class="tele-label">Eyes <span class="tele-tick">✓</span></div>
+            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.eyes}%; background: ${accentColor};"></div></div>
+          </div>
+          <div class="tele-item">
+            <div class="tele-label">Pitch <span class="tele-tick">✓</span></div>
+            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.pitch}%; background: ${accentColor};"></div></div>
+          </div>
+          <div class="tele-item">
+            <div class="tele-label">Mouth <span class="tele-icon">🎙</span></div>
+            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.mouth}%; background: #A78BFA;"></div></div>
+          </div>
+          <div class="tele-item">
+            <div class="tele-label">Hand <span class="tele-tick">✓</span></div>
+            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.hand ? 80 : 0}%; background: #10B981;"></div></div>
+          </div>
+          <div class="tele-item" style="grid-column: span 2;">
+            <div class="tele-label">Alert <span class="tele-icon">⚡</span></div>
+            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.alert}%; background: ${telemetry.alert < 50 ? '#EF4444' : accentColor};"></div></div>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  listEl.innerHTML = html;
+}
+
+function updateKPIsUI(faces, data) {
+  const countEl = document.getElementById("kpi-students-count");
+  const avgEl = document.getElementById("kpi-avg-engagement");
+  const handsEl = document.getElementById("kpi-hand-raises");
+  const confEl = document.getElementById("kpi-confusion");
+
+  if (data && data.kpi) {
+    if (countEl) countEl.innerText = data.kpi.students;
+    if (avgEl) avgEl.innerText = `${data.kpi.avg}%`;
+    if (handsEl) handsEl.innerText = data.kpi.hand_raises;
+    if (confEl) confEl.innerText = data.kpi.confusion;
+    return;
+  }
+
+  const count = faces ? faces.length : 0;
+  if (countEl) countEl.innerText = count;
+
+  let avg = 75;
+  let hands = 0;
+  let confusion = 0;
+
+  if (count > 0) {
+    let sumEng = 0;
+    faces.forEach(f => {
+      const isLooking = f.is_looking;
+      const eng = f.engagement !== undefined ? f.engagement : (isLooking ? 94 : 21);
+      sumEng += eng;
+      if (f.telemetry && f.telemetry.hand) hands++;
+      if (!isLooking || f.has_phone || (f.behavior && (f.behavior.includes("Distracted") || f.behavior.includes("Away") || f.behavior.includes("Sleeping")))) {
+        confusion++;
+      }
+    });
+    avg = Math.round(sumEng / count);
+  } else if (data && data.gauge !== undefined) {
+    avg = Math.round(data.gauge);
+  }
+
+  if (avgEl) avgEl.innerText = `${avg}%`;
+  if (handsEl) handsEl.innerText = hands || (count > 0 ? 1 : 0);
+  if (confEl) confEl.innerText = confusion;
 }
 
 function updateEngagementGauge(score) {

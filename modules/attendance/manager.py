@@ -285,32 +285,34 @@ class AttendanceManager:
             if not all_students:
                 return []
 
-            # Standby / Live Preview when no formal session is active
-            if self.active_session_id is None:
-                preview_records = []
-                for student in all_students:
-                    sid = student.id
-                    is_detected = (sid in detected_student_ids)
-                    if is_detected:
-                        self.student_presence_seconds[sid] = self.student_presence_seconds.get(sid, 0.0) + dt
-                        now_str = datetime.utcnow().strftime("%H:%M:%S")
-                    else:
-                        now_str = "--"
-
-                    sec = self.student_presence_seconds.get(sid, 0.0)
-                    preview_records.append({
-                        "id": sid,
-                        "session_id": 0,
-                        "student_id": sid,
-                        "student_name": student.to_dict(anonymous)["name"],
-                        "roll_number": student.to_dict(anonymous)["roll_number"],
-                        "first_seen": now_str if is_detected else "--",
-                        "last_seen": now_str if is_detected else "--",
-                        "total_presence_seconds": round(sec, 1),
-                        "status": "Ready (In Camera)" if is_detected else "Standby",
-                        "sustained_verified": False,
-                        "sustained_ratio": 0.0
-                    })
+            # Standby / Live Preview when no formal session is active
+            if self.active_session_id is None:
+                preview_records = []
+                for student in all_students:
+                    sid = student.id
+                    is_detected = (sid in detected_student_ids)
+                    if is_detected:
+                        self.student_presence_seconds[sid] = self.student_presence_seconds.get(sid, 0.0) + dt
+                        now_str = datetime.utcnow().strftime("%H:%M:%S")
+                    else:
+                        now_str = "--"
+
+                    sec = self.student_presence_seconds.get(sid, 0.0)
+                    is_sustained = (sec >= 3.5)
+                    status_text = "Present" if is_sustained else ("In Frame" if is_detected else "Standby")
+                    preview_records.append({
+                        "id": sid,
+                        "session_id": 0,
+                        "student_id": sid,
+                        "student_name": student.to_dict(anonymous)["name"],
+                        "roll_number": student.to_dict(anonymous)["roll_number"],
+                        "first_seen": now_str if is_detected else "--",
+                        "last_seen": now_str if is_detected else "--",
+                        "total_presence_seconds": round(sec, 1),
+                        "status": status_text,
+                        "sustained_verified": is_sustained,
+                        "sustained_ratio": min(100.0, round((sec / 4.0) * 100.0, 1)) if is_detected else (100.0 if is_sustained else 0.0)
+                    })
                 return preview_records
 
             # Active formal session tracking

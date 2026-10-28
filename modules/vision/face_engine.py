@@ -16,8 +16,30 @@ class FaceEngine:
         self.app = None
         self.active_provider = "CPU"
         self.is_gpu = False
+        self.yunet = None
 
+        self._init_yunet()
         self._init_insightface()
+
+    def _init_yunet(self):
+        """Initializes OpenCV's SOTA YuNet CNN face detector (227 KB, <5MB RAM)."""
+        yunet_path = str(Path(__file__).resolve().parent / "face_detection_yunet_2023mar.onnx")
+        if os.path.exists(yunet_path) and hasattr(cv2, "FaceDetectorYN"):
+            try:
+                self.yunet = cv2.FaceDetectorYN.create(
+                    model=yunet_path,
+                    config="",
+                    input_size=(Config.TARGET_WIDTH, Config.TARGET_HEIGHT),
+                    score_threshold=0.50,
+                    nms_threshold=0.35,
+                    top_k=5000
+                )
+                print(f"[FaceEngine] Initialized High-Accuracy YuNet CNN Face Detector ({yunet_path})")
+            except Exception as e:
+                print(f"[FaceEngine] YuNet init notice: {e}")
+                self.yunet = None
+        else:
+            self.yunet = None
 
     def _init_cascade(self):
         """Loads high-accuracy OpenCV Haar Cascade with bundled alt2, default, and profile models."""
@@ -158,7 +180,50 @@ class FaceEngine:
             except Exception as e:
                 pass
 
-        # Fallback detection with enhanced sensitivity & geometric landmark synthesis
+        # 2. High-Accuracy YuNet CNN Face Detector (SOTA, 227KB ONNX, <5MB RAM, 5 keypoints)
+        if hasattr(self, "yunet") and self.yunet is not None:
+            try:
+                self.yunet.setInputSize((w, h))
+                _, yn_faces = self.yunet.detect(frame_bgr)
+                if yn_faces is not None and len(yn_faces) > 0:
+                    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+                    for face in yn_faces:
+                        fx, fy, fw, fh = face[0:4]
+                        conf = float(face[-1])
+                        if conf < 0.35:
+                            continue
+                        x1 = max(0, min(w - 1, int(fx)))
+                        y1 = max(0, min(h - 1, int(fy)))
+                        x2 = max(0, min(w, int(fx + fw)))
+                        y2 = max(0, min(h, int(fy + fh)))
+                        if x2 <= x1 or y2 <= y1:
+                            continue
+
+                        landmarks = [
+                            [float(face[4]), float(face[5])],
+                            [float(face[6]), float(face[7])],
+                            [float(face[8]), float(face[9])],
+                            [float(face[10]), float(face[11])],
+                            [float(face[12]), float(face[13])]
+                        ]
+
+                        face_crop = cv2.resize(gray[y1:y2, x1:x2], (32, 32)).flatten().astype(np.float32)
+                        emb = np.resize(face_crop, (512,))
+                        norm = float(np.linalg.norm(emb))
+                        if norm > 1e-6:
+                            emb = emb / norm
+                        results.append({
+                            "bbox": (int(x1), int(y1), int(x2), int(y2)),
+                            "embedding": emb,
+                            "landmarks": landmarks,
+                            "det_score": float(conf)
+                        })
+                    if len(results) > 0:
+                        return results
+            except Exception as e:
+                pass
+
+        # 3. Fallback Haar cascade detection with enhanced sensitivity & geometric landmark synthesis
         if hasattr(self, "cascade") and self.cascade is not None and not self.cascade.empty():
             try:
                 gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)

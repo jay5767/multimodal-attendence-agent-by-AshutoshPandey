@@ -1000,3 +1000,209 @@ a {
   .hero-heading { font-size: 36px; }
   .hero-cta { flex-direction: column; align-items: flex-start; }
 }
+
+/* ==========================================================================
+   TRACKED STUDENTS & KPI CARDS (Matching Reference UI)
+   ========================================================================== */
+.telemetry-right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tracked-students-panel {
+  background-color: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-card);
+  padding: 18px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.panel-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.panel-title-eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94A3B8;
+}
+
+.badge-detected-pill {
+  background: rgba(16, 185, 129, 0.16);
+  color: #34D399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.badge-detected-pill::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10B981;
+  box-shadow: 0 0 6px #10B981;
+}
+
+.tracked-students-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tracked-student-card {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 14px;
+  transition: all 0.2s ease;
+}
+
+.student-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.student-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #F8FAFC;
+}
+
+.student-status-badge {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.badge-state-distracted {
+  background: rgba(245, 158, 11, 0.20);
+  color: #FBBF24;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
+.badge-state-focused {
+  background: rgba(16, 185, 129, 0.20);
+  color: #34D399;
+  border: 1px solid rgba(16, 185, 129, 0.45);
+}
+
+.badge-state-sleeping, .badge-state-phone {
+  background: rgba(239, 68, 68, 0.20);
+  color: #F87171;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+.student-card-score {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.student-card-conf {
+  font-size: 10px;
+  color: #64748B;
+  margin-top: 2px;
+}
+
+.telemetry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+}
+
+.tele-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tele-label {
+  font-size: 11px;
+  color: #94A3B8;
+  width: 52px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tele-tick {
+  color: #10B981;
+  font-weight: 700;
+  font-size: 10px;
+}
+
+.tele-icon {
+  font-size: 10px;
+}
+
+.tele-track {
+  flex: 1;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.tele-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+/* 4 KPI Quad Grid */
+.kpi-quad-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.kpi-mini-card {
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-card);
+  padding: 16px 14px;
+  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.kpi-mini-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748B;
+  margin-bottom: 6px;
+}
+
+.kpi-mini-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: #F8FAFC;
+  line-height: 1.1;
+}
+
+.color-emerald {
+  color: #10B981 !important;
+}
+
+.color-crimson {
+  color: #EF4444 !important;
+}
