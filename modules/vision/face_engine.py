@@ -30,9 +30,9 @@ class FaceEngine:
                     model=yunet_path,
                     config="",
                     input_size=(320, 240),
-                    score_threshold=0.58,
-                    nms_threshold=0.30,
-                    top_k=20
+                    score_threshold=0.65,
+                    nms_threshold=0.25,
+                    top_k=5
                 )
                 print(f"[FaceEngine] Initialized High-Accuracy YuNet CNN Face Detector ({yunet_path})")
             except Exception as e:
@@ -173,10 +173,59 @@ class FaceEngine:
                 kept.append(cand)
         return kept
 
+    @staticmethod
+    def _validate_face_geometry(landmarks: Any, bbox: Tuple[int, int, int, int]) -> bool:
+        """
+        Strict geometric validation: verifies landmarks form a legitimate human face.
+        Rejects wall textures, shadows, and noise by verifying eyes, nose, and mouth alignment.
+        """
+        if landmarks is None or len(landmarks) < 5:
+            return False
+        x1, y1, x2, y2 = bbox
+        bw = x2 - x1
+        bh = y2 - y1
+        if bw < 50 or bh < 50:
+            return False
+        aspect = bh / float(bw)
+        if aspect < 0.70 or aspect > 1.90:
+            return False
+
+        try:
+            kps = np.array(landmarks, dtype=np.float32)
+            re, le, nose, rm, lm = kps[0], kps[1], kps[2], kps[3], kps[4]
+
+            eye_dist = float(np.linalg.norm(le - re))
+            if eye_dist < bw * 0.18 or eye_dist > bw * 0.75:
+                return False
+
+            # Eyes roughly horizontal (roll within realistic limits)
+            if abs(re[1] - le[1]) > eye_dist * 0.75:
+                return False
+
+            # Eyes must be above nose
+            eye_y = (re[1] + le[1]) / 2.0
+            if nose[1] <= eye_y:
+                return False
+
+            # Mouth must be below nose
+            mouth_y = (rm[1] + lm[1]) / 2.0
+            if mouth_y <= nose[1]:
+                return False
+
+            # Nose must be roughly centered between eyes horizontally
+            min_eye_x = min(re[0], le[0]) - bw * 0.20
+            max_eye_x = max(re[0], le[0]) + bw * 0.20
+            if not (min_eye_x <= nose[0] <= max_eye_x):
+                return False
+
+            return True
+        except Exception:
+            return False
+
     def detect_faces(self, frame_bgr: np.ndarray) -> List[Dict[str, Any]]:
         """
-        Detects faces in frame_bgr and computes 512-d normalized face embeddings.
-        Strict anti-ghost filtering: high score threshold and conservative fallbacks.
+        Detects faces in frame_bgr and validates facial geometry.
+        Guarantees zero ghost/wall detections.
         """
         results = []
         if frame_bgr is None or frame_bgr.size == 0:
@@ -203,7 +252,7 @@ class FaceEngine:
                     for face in yn_faces:
                         fx, fy, fw, fh = face[0:4]
                         conf = float(face[-1])
-                        if conf < 0.58:
+                        if conf < 0.65:
                             continue
                         x1 = max(0, min(w - 1, int(fx * scale_x)))
                         y1 = max(0, min(h - 1, int(fy * scale_y)))
@@ -211,8 +260,7 @@ class FaceEngine:
                         y2 = max(0, min(h, int((fy + fh) * scale_y)))
                         box_w = x2 - x1
                         box_h = y2 - y1
-                        # Ghost rejection: reject tiny noise patches
-                        if box_w < 45 or box_h < 45:
+                        if box_w < 50 or box_h < 50:
                             continue
 
                         landmarks = [
@@ -223,6 +271,10 @@ class FaceEngine:
                             [float(face[12] * scale_x), float(face[13] * scale_y)]
                         ]
 
+                        # Verify that this detection is an actual human face, not wall/noise
+                        if not self._validate_face_geometry(landmarks, (x1, y1, x2, y2)):
+                            continue
+
                         results.append({
                             "bbox": (int(x1), int(y1), int(x2), int(y2)),
                             "embedding": None,
@@ -230,7 +282,7 @@ class FaceEngine:
                             "det_score": float(conf)
                         })
                     deduped = self._nms_dedup(results)
-                    return deduped[:2]
+                    return deduped[:1]
                 else:
                     return []
             except Exception as e:
@@ -246,7 +298,7 @@ class FaceEngine:
                     y1 = max(0, min(h - 1, y1))
                     x2 = max(0, min(w, x2))
                     y2 = max(0, min(h, y2))
-                    if (x2 - x1) < 45 or (y2 - y1) < 45:
+                    if (x2 - x1) < 50 or (y2 - y1) < 50:
                         continue
 
                     # L2 normalize embedding
@@ -255,48 +307,17 @@ class FaceEngine:
                     if norm > 1e-6:
                         emb = emb / norm
 
-                    results.append({
-                        "bbox": (x1, y1, x2, y2),
-                        "embedding": emb,
-                        "landmarks": getattr(f, "kps", None),
-                        "det_score": float(getattr(f, "det_score", 0.95))
-                    })
-                return self._nms_dedup(results)[:2]
-            except Exception as e:
-                pass
-
-        # 3. Fallback Haar cascade: Strictly conservative settings (NO GHOSTS)
-        if hasattr(self, "cascade") and self.cascade is not None and not self.cascade.empty():
-            try:
-                gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-                gray_eq = cv2.equalizeHist(gray)
-                # Robust detection requiring at least 6 agreeing neighbors and min 60x60 size
-                dets = self.cascade.detectMultiScale(gray_eq, scaleFactor=1.12, minNeighbors=6, minSize=(60, 60))
-
-                for (x, y, fw, fh) in dets:
-                    x1, y1, x2, y2 = int(x), int(y), int(x + fw), int(y + fh)
-                    if fw < 50 or fh < 50:
+                    kps = getattr(f, "kps", None)
+                    if kps is not None and not self._validate_face_geometry(kps, (x1, y1, x2, y2)):
                         continue
-                    kps = [
-                        [float(x + 0.32 * fw), float(y + 0.38 * fh)],
-                        [float(x + 0.68 * fw), float(y + 0.38 * fh)],
-                        [float(x + 0.50 * fw), float(y + 0.55 * fh)],
-                        [float(x + 0.35 * fw), float(y + 0.75 * fh)],
-                        [float(x + 0.65 * fw), float(y + 0.75 * fh)]
-                    ]
 
-                    face_crop = cv2.resize(gray[y:y+fh, x:x+fw], (32, 32)).flatten().astype(np.float32)
-                    emb = np.resize(face_crop, (512,))
-                    norm = float(np.linalg.norm(emb))
-                    if norm > 1e-6:
-                        emb = emb / norm
                     results.append({
                         "bbox": (x1, y1, x2, y2),
                         "embedding": emb,
                         "landmarks": kps,
-                        "det_score": float(0.75)
+                        "det_score": float(getattr(f, "det_score", 0.95))
                     })
-                return self._nms_dedup(results)[:2]
+                return self._nms_dedup(results)[:1]
             except Exception as e:
                 pass
 

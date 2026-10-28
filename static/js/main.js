@@ -129,6 +129,11 @@ function initSocket() {
   });
 
   socket.on("frame_processed", (data) => {
+    isProcessingFrame = false;
+    if (window.frameSafetyTimer) {
+      clearTimeout(window.frameSafetyTimer);
+      window.frameSafetyTimer = null;
+    }
     handleProcessedFrame(data);
   });
 
@@ -379,19 +384,22 @@ async function captureAndSendLoop(timestamp) {
         isProcessingFrame = true;
 
         try {
-          // Ultra-lean 360x270 JPEG payload (<8KB) for lightning-fast network transmission
+          // Clean 360x270 JPEG at 0.70 quality (no compression artifact noise on walls)
           hiddenCtx.drawImage(videoElement, 0, 0, 360, 270);
-          const dataUrl = hiddenCanvas.toDataURL("image/jpeg", 0.40);
+          const dataUrl = hiddenCanvas.toDataURL("image/jpeg", 0.70);
 
           const audioPayload = {
             rms: window.currentAudioRms || 0.0,
             is_speech: window.currentIsSpeech || false
           };
 
-          // Use real-time WebSocket when available for zero-overhead streaming; HTTP fallback
+          // Flow control: keep isProcessingFrame = true until server responds to prevent queue buildup
           if (socket && socket.connected) {
             socket.emit("process_frame", { image: dataUrl, audio: audioPayload });
-            isProcessingFrame = false;
+            if (window.frameSafetyTimer) clearTimeout(window.frameSafetyTimer);
+            window.frameSafetyTimer = setTimeout(() => {
+              isProcessingFrame = false;
+            }, 350);
           } else {
             const response = await fetch("/api/frame/process", {
               method: "POST",
