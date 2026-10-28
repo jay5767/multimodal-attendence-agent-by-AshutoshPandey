@@ -443,14 +443,22 @@ function handleProcessedFrame(data) {
   if (gazeCountEl) gazeCountEl.innerText = lookingCount;
 
   // Draw Bounding Boxes on Overlay Canvas (Faces + Phones)
-  drawFaceOverlays(faceList, data.phones || []);
-
-  // Update Tracked Students List & 4 KPI Metric Cards matching reference UI
-  if (typeof updateTrackedStudentsUI === "function") {
-    updateTrackedStudentsUI(faceList, data);
-  }
-  if (typeof updateKPIsUI === "function") {
-    updateKPIsUI(faceList, data);
+  drawFaceOverlays(faceList, data.phones || []);
+
+
+
+  // Update Tracked Students List & 4 KPI Metric Cards matching reference UI
+
+  if (typeof updateTrackedStudentsUI === "function") {
+
+    updateTrackedStudentsUI(faceList, data);
+
+  }
+
+  if (typeof updateKPIsUI === "function") {
+
+    updateKPIsUI(faceList, data);
+
   }
 
   // Update Circular Engagement Gauge
@@ -526,8 +534,12 @@ function drawFaceOverlays(faces, phones = []) {
 
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-  const scaleX = overlayCanvas.width / 640.0;
-  const scaleY = overlayCanvas.height / 480.0;
+  // Use dynamic backend processed frame dimensions to guarantee 100.0% pixel-perfect scaling
+  const frameW = (window.lastProcessedFrameSize && window.lastProcessedFrameSize[0]) ? window.lastProcessedFrameSize[0] : (hiddenCanvas ? hiddenCanvas.width : 640.0);
+  const frameH = (window.lastProcessedFrameSize && window.lastProcessedFrameSize[1]) ? window.lastProcessedFrameSize[1] : (hiddenCanvas ? hiddenCanvas.height : 480.0);
+
+  const scaleX = overlayCanvas.width / frameW;
+  const scaleY = overlayCanvas.height / frameH;
 
   // 1. Draw Detected Phones (Class 67 YOLO)
   if (phones && phones.length > 0) {
@@ -600,7 +612,7 @@ function drawFaceOverlays(faces, phones = []) {
       dotColor = "#F59E0B";
     }
 
-    // Determine uppercase display name
+    // Determine display name
     let displayName = face.name;
     if (isAnonymousMode || !displayName || displayName === "Unknown") {
       displayName = `LEARNER ${String.fromCharCode(65 + (idx % 26))}`;
@@ -618,20 +630,32 @@ function drawFaceOverlays(faces, phones = []) {
     overlayCtx.beginPath();
     overlayCtx.roundRect(drawX1, drawY1, boxW, boxH, 18);
     overlayCtx.stroke();
-    overlayCtx.shadowBlur = 0; // reset blur
+    overlayCtx.shadowBlur = 0;
 
-    // B. Draw Top Floating Pill: [Glowing Dot] [LEARNER A] [ 21% ]
-    const topPillW = Math.max(140, Math.min(220, boxW * 0.95));
-    const topPillH = 38;
-    const topPillX = drawX1 + (boxW - topPillW) / 2;
-    const topPillY = Math.max(6, drawY1 - topPillH - 10);
+    // B. Draw Top Floating Pill: [Glowing Dot] [NAME] [ SCORE% ]
+    // Measure text to dynamically expand pill so name NEVER overflows
+    overlayCtx.font = "bold 13px Inter, -apple-system, sans-serif";
+    const nameMetrics = overlayCtx.measureText(displayName);
+    const textWidth = Math.ceil(nameMetrics.width);
+    const capW = 46;
+    const capH = 24;
+    const dotSpace = 24;
+    const innerPad = 14;
+
+    // Dynamic width guarantees full name always fits cleanly inside the pill!
+    const topPillW = Math.max(130, dotSpace + textWidth + innerPad + capW + 10);
+    const topPillH = 36;
+    let topPillX = drawX1 + (boxW - topPillW) / 2;
+    // Keep pill inside canvas bounds
+    topPillX = Math.max(6, Math.min(overlayCanvas.width - topPillW - 6, topPillX));
+    const topPillY = Math.max(6, drawY1 - topPillH - 8);
 
     // Pill container background
     overlayCtx.fillStyle = "rgba(17, 24, 39, 0.94)";
     overlayCtx.beginPath();
     overlayCtx.roundRect(topPillX, topPillY, topPillW, topPillH, 10);
     overlayCtx.fill();
-    overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+    overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.16)";
     overlayCtx.lineWidth = 1;
     overlayCtx.stroke();
 
@@ -640,19 +664,17 @@ function drawFaceOverlays(faces, phones = []) {
     overlayCtx.shadowColor = dotColor;
     overlayCtx.shadowBlur = 6;
     overlayCtx.beginPath();
-    overlayCtx.arc(topPillX + 16, topPillY + topPillH / 2, 4.5, 0, Math.PI * 2);
+    overlayCtx.arc(topPillX + 14, topPillY + topPillH / 2, 4.5, 0, Math.PI * 2);
     overlayCtx.fill();
     overlayCtx.shadowBlur = 0;
 
-    // Student Name text
+    // Student Name text - fitted with exact measured clearance
     overlayCtx.fillStyle = "#F9FAFB";
     overlayCtx.font = "bold 13px Inter, -apple-system, sans-serif";
     overlayCtx.textAlign = "left";
-    overlayCtx.fillText(displayName, topPillX + 28, topPillY + 23);
+    overlayCtx.fillText(displayName, topPillX + 26, topPillY + 22);
 
-    // Score capsule on the right side of top pill
-    const capW = 44;
-    const capH = 26;
+    // Score capsule on the right
     const capX = topPillX + topPillW - capW - 6;
     const capY = topPillY + (topPillH - capH) / 2;
     overlayCtx.fillStyle = (boxColor === "#10B981") ? "rgba(16, 185, 129, 0.22)" : ((boxColor === "#EF4444") ? "rgba(239, 68, 68, 0.22)" : "rgba(245, 158, 11, 0.22)");
@@ -666,19 +688,22 @@ function drawFaceOverlays(faces, phones = []) {
     overlayCtx.fillStyle = (boxColor === "#10B981") ? "#34D399" : ((boxColor === "#EF4444") ? "#F87171" : "#FBBF24");
     overlayCtx.font = "bold 12px Inter, sans-serif";
     overlayCtx.textAlign = "center";
-    overlayCtx.fillText(`${score}%`, capX + capW / 2, capY + 17);
+    overlayCtx.fillText(`${score}%`, capX + capW / 2, capY + 16);
 
-    // C. Draw Bottom Floating Pill: Centered capsule with glowing border [ DISTRACTED ]
-    const botPillW = Math.max(130, Math.min(180, boxW * 0.85));
-    const botPillH = 34;
-    const botPillX = drawX1 + (boxW - botPillW) / 2;
+    // C. Draw Bottom Floating Pill: Centered capsule with glowing border
+    overlayCtx.font = "bold 12px Inter, sans-serif";
+    const statusW = overlayCtx.measureText(statusText).width;
+    const botPillW = Math.max(120, statusW + 36);
+    const botPillH = 32;
+    let botPillX = drawX1 + (boxW - botPillW) / 2;
+    botPillX = Math.max(6, Math.min(overlayCanvas.width - botPillW - 6, botPillX));
     const botPillY = Math.min(overlayCanvas.height - botPillH - 4, drawY2 - (botPillH / 2));
 
     overlayCtx.fillStyle = "rgba(15, 23, 42, 0.96)";
     overlayCtx.shadowColor = boxColor;
     overlayCtx.shadowBlur = 12;
     overlayCtx.beginPath();
-    overlayCtx.roundRect(botPillX, botPillY, botPillW, botPillH, 17);
+    overlayCtx.roundRect(botPillX, botPillY, botPillW, botPillH, 16);
     overlayCtx.fill();
     overlayCtx.strokeStyle = boxColor;
     overlayCtx.lineWidth = 2.2;
@@ -688,7 +713,7 @@ function drawFaceOverlays(faces, phones = []) {
     overlayCtx.fillStyle = statusTextColor;
     overlayCtx.font = "bold 12px Inter, sans-serif";
     overlayCtx.textAlign = "center";
-    overlayCtx.fillText(statusText, botPillX + botPillW / 2, botPillY + 21);
+    overlayCtx.fillText(statusText, botPillX + botPillW / 2, botPillY + 20);
 
     // D. Vertical Level Meter Gauge beside right edge of face box
     const meterW = 6;
@@ -697,13 +722,11 @@ function drawFaceOverlays(faces, phones = []) {
     const meterY = drawY1 + (boxH - meterH) / 2;
 
     if (meterX + meterW <= overlayCanvas.width) {
-      // Meter track
       overlayCtx.fillStyle = "rgba(255, 255, 255, 0.15)";
       overlayCtx.beginPath();
       overlayCtx.roundRect(meterX, meterY, meterW, meterH, 3);
       overlayCtx.fill();
 
-      // Filled portion from bottom up
       const fillH = Math.max(4, meterH * (Math.max(5, Math.min(100, score)) / 100));
       const fillY = meterY + meterH - fillH;
 
@@ -715,7 +738,6 @@ function drawFaceOverlays(faces, phones = []) {
       overlayCtx.fill();
       overlayCtx.shadowBlur = 0;
 
-      // Small glowing indicator pip at top of filled bar
       overlayCtx.fillStyle = "#FFFFFF";
       overlayCtx.beginPath();
       overlayCtx.arc(meterX + meterW / 2, fillY, 2.5, 0, Math.PI * 2);
@@ -871,7 +893,7 @@ function updateKPIsUI(faces, data) {
   }
 
   if (avgEl) avgEl.innerText = `${avg}%`;
-  if (handsEl) handsEl.innerText = hands || (count > 0 ? 1 : 0);
+  if (handsEl) handsEl.innerText = hands;
   if (confEl) confEl.innerText = confusion;
 }
 

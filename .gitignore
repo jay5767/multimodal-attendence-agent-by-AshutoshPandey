@@ -15,14 +15,16 @@ env/
 data/
 
 # Machine Learning Models & Heavy Weights
-models/
+models/*
+!models/yolov8n.onnx
 *.pt
 *.weights
 *.onnx
 *.zip
 data/insightface/
-# Track ultra-lean SOTA 227KB YuNet CNN face detector
+# Track ultra-lean SOTA models: YuNet CNN face detector (227KB) and YOLOv8n ONNX (12.8MB)
 !modules/vision/face_detection_yunet_2023mar.onnx
+!models/yolov8n.onnx
 
 # Generated outputs & exports
 outputs/

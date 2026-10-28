@@ -24,6 +24,7 @@ from modules.vision.face_engine import FaceEngine
 from modules.vision.tracker import FaceTracker
 from modules.vision.head_pose import HeadPoseEstimator
 from modules.vision.movement import MovementAnalyzer
+from modules.vision.hand_detector import HandRaiseDetector
 from modules.vision.camera_server import ServerCameraStream
 from modules.vision.phone_detector import PhoneDetector
 from modules.audio.capture import AudioStreamManager
@@ -48,6 +49,7 @@ face_tracker = FaceTracker()
 head_pose_estimator = HeadPoseEstimator()
 movement_analyzer = MovementAnalyzer()
 phone_detector = PhoneDetector()
+hand_detector = HandRaiseDetector()
 server_cam = ServerCameraStream()
 audio_mgr = AudioStreamManager()
 fusion_engine = MultimodalFusionEngine(attendance_mgr)
@@ -431,10 +433,12 @@ def process_single_frame(frame: np.ndarray) -> dict:
         yaw, pitch, is_looking = pose["yaw"], pose["pitch"], pose["is_looking_at_board"]
         behavior = pose.get("behavior", "Focused")
 
-        # Phone usage detection & spatial correlation
-        has_phone, matched_phone, phone_reason = phone_detector.match_phone_to_face(
-            bbox, detected_phones, pitch=pitch, frame_shape=(processed_h, processed_w)
-        )
+        # Phone usage detection & spatial correlation with anti-glitch debounce
+        has_phone, matched_phone, phone_reason = phone_detector.match_phone_to_face(
+            bbox, detected_phones, pitch=pitch, frame_shape=(processed_h, processed_w), track_id=int(track_id)
+        )
+        # Dedicated optical hand-raise detector with anti-jitter debouncing
+        is_hand_raised = hand_detector.update(int(track_id), frame, [int(b) for b in bbox])
         if has_phone:
             behavior = "📱 Phone Usage / Distracted"
             is_looking = False  # Phone distraction breaks visual board attention
@@ -572,7 +576,7 @@ def process_single_frame(frame: np.ndarray) -> dict:
 
                 "mouth": int(mouth_pct),
 
-                "hand": 1 if mov_score > 0.35 else 0,
+                "hand": 1 if is_hand_raised else 0,
 
                 "alert": int(alert_pct),
 
@@ -583,6 +587,8 @@ def process_single_frame(frame: np.ndarray) -> dict:
         })
 
     movement_analyzer.cleanup(active_track_ids)
+    hand_detector.cleanup(active_track_ids)
+    phone_detector.cleanup(active_track_ids)
     state["last_faces_cache"] = faces_payload
 
     audio_metrics = audio_mgr.get_latest_metrics()
@@ -642,7 +648,7 @@ def process_single_frame(frame: np.ndarray) -> dict:
 
     kpi_avg = round(sum(f["engagement"] for f in faces_payload) / max(1, len(faces_payload))) if faces_payload else instant_gauge
 
-    kpi_hands = sum(1 for f in faces_payload if f.get("telemetry", {}).get("hand", 0) > 0) or (1 if faces_payload else 0)
+    kpi_hands = sum(1 for f in faces_payload if f.get("telemetry", {}).get("hand", 0) > 0)
 
     kpi_confusion = sum(1 for f in faces_payload if (not f.get("is_looking", True) or f.get("has_phone", False) or "Sleeping" in f.get("behavior", "") or "Distracted" in f.get("behavior", "")))
 
