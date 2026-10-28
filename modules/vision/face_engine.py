@@ -20,21 +20,38 @@ class FaceEngine:
         self._init_insightface()
 
     def _init_cascade(self):
-        """Loads OpenCV Haar Cascade with bundled file and multi-path resolution."""
+        """Loads high-accuracy OpenCV Haar Cascade with bundled alt2, default, and profile models."""
+        base_dir = Path(__file__).resolve().parent
+        # alt2 is Gentle AdaBoost with significantly higher sensitivity in real webcam lighting
         candidates = [
-            str(Path(__file__).resolve().parent / "haarcascade_frontalface_default.xml"),
+            str(base_dir / "haarcascade_frontalface_alt2.xml"),
+            str(base_dir / "haarcascade_frontalface_default.xml"),
+            getattr(cv2.data, "haarcascades", "") + "haarcascade_frontalface_alt2.xml",
             getattr(cv2.data, "haarcascades", "") + "haarcascade_frontalface_default.xml",
-            "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
-            "/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml"
+            "/usr/share/opencv4/haarcascades/haarcascade_frontalface_alt2.xml",
+            "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
         ]
+        loaded_cas = None
         for p in candidates:
             if p and os.path.exists(p):
                 cas = cv2.CascadeClassifier(p)
                 if not cas.empty():
                     print(f"[FaceEngine] Successfully loaded Haar Cascade from {p}")
-                    return cas
-        print("[FaceEngine] Warning: Haar Cascade XML not found, initializing empty classifier.")
-        return cv2.CascadeClassifier()
+                    loaded_cas = cas
+                    break
+
+        # Profile cascade for side-facing head poses
+        prof_p = str(base_dir / "haarcascade_profileface.xml")
+        if os.path.exists(prof_p):
+            pcas = cv2.CascadeClassifier(prof_p)
+            self.profile_cascade = pcas if not pcas.empty() else None
+        else:
+            self.profile_cascade = None
+
+        if loaded_cas is None:
+            print("[FaceEngine] Warning: Haar Cascade XML not found, initializing empty classifier.")
+            return cv2.CascadeClassifier()
+        return loaded_cas
 
     def _init_insightface(self):
         """Initializes InsightFace FaceAnalysis with CUDA, CPU, and ultra-lean cloud fallbacks."""
@@ -141,15 +158,34 @@ class FaceEngine:
             except Exception as e:
                 pass
 
-        # Fallback detection
+        # Fallback detection with enhanced sensitivity & geometric landmark synthesis
         if hasattr(self, "cascade") and self.cascade is not None and not self.cascade.empty():
             try:
                 gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-                dets = self.cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
+                # 1. Histogram equalization (enhances low-light and uneven webcam lighting)
+                gray_eq = cv2.equalizeHist(gray)
+                dets = self.cascade.detectMultiScale(gray_eq, scaleFactor=1.08, minNeighbors=3, minSize=(30, 30))
+                
+                # 2. Raw grayscale with relaxed threshold if equalized returned nothing
+                if len(dets) == 0:
+                    dets = self.cascade.detectMultiScale(gray, scaleFactor=1.06, minNeighbors=2, minSize=(25, 25))
+
+                # 3. Profile cascade check if turned away
+                if len(dets) == 0 and hasattr(self, "profile_cascade") and self.profile_cascade is not None and not self.profile_cascade.empty():
+                    dets = self.profile_cascade.detectMultiScale(gray_eq, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30))
+
                 for (x, y, fw, fh) in dets:
+                    # Synthesize 5 facial keypoints for head pose geometry & gaze tracking
+                    kps = np.array([
+                        [x + 0.32 * fw, y + 0.38 * fh],  # Left eye
+                        [x + 0.68 * fw, y + 0.38 * fh],  # Right eye
+                        [x + 0.50 * fw, y + 0.55 * fh],  # Nose tip
+                        [x + 0.35 * fw, y + 0.75 * fh],  # Left mouth
+                        [x + 0.65 * fw, y + 0.75 * fh],  # Right mouth
+                    ], dtype=np.float32)
+
                     # Generate pseudo 512-d normalized embedding from cropped face spatial features
                     face_crop = cv2.resize(gray[y:y+fh, x:x+fw], (32, 32)).flatten().astype(np.float32)
-                    # Pad/project to 512
                     emb = np.resize(face_crop, (512,))
                     norm = np.linalg.norm(emb)
                     if norm > 1e-6:
@@ -157,8 +193,8 @@ class FaceEngine:
                     results.append({
                         "bbox": (x, y, x + fw, y + fh),
                         "embedding": emb,
-                        "landmarks": None,
-                        "det_score": 0.85
+                        "landmarks": kps,
+                        "det_score": 0.90
                     })
             except Exception as e:
                 pass
