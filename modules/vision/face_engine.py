@@ -19,6 +19,23 @@ class FaceEngine:
 
         self._init_insightface()
 
+    def _init_cascade(self):
+        """Loads OpenCV Haar Cascade with bundled file and multi-path resolution."""
+        candidates = [
+            str(Path(__file__).resolve().parent / "haarcascade_frontalface_default.xml"),
+            getattr(cv2.data, "haarcascades", "") + "haarcascade_frontalface_default.xml",
+            "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+            "/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml"
+        ]
+        for p in candidates:
+            if p and os.path.exists(p):
+                cas = cv2.CascadeClassifier(p)
+                if not cas.empty():
+                    print(f"[FaceEngine] Successfully loaded Haar Cascade from {p}")
+                    return cas
+        print("[FaceEngine] Warning: Haar Cascade XML not found, initializing empty classifier.")
+        return cv2.CascadeClassifier()
+
     def _init_insightface(self):
         """Initializes InsightFace FaceAnalysis with CUDA, CPU, and ultra-lean cloud fallbacks."""
         is_cloud = bool(os.environ.get("RENDER") or os.environ.get("LOW_MEMORY"))
@@ -28,7 +45,7 @@ class FaceEngine:
             self.app = None
             self.active_provider = "CPU (Lean Fallback)"
             self.is_gpu = False
-            self.cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+            self.cascade = self._init_cascade()
             return
 
         try:
@@ -66,7 +83,7 @@ class FaceEngine:
             self.app = None
             self.active_provider = "CPU (Fallback)"
             self.is_gpu = False
-            self.cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+            self.cascade = self._init_cascade()
 
     def get_acceleration_info(self) -> Dict[str, Any]:
         """Returns hardware acceleration info for the UI badge."""
@@ -125,23 +142,26 @@ class FaceEngine:
                 pass
 
         # Fallback detection
-        if hasattr(self, "cascade"):
-            gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            dets = self.cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
-            for (x, y, fw, fh) in dets:
-                # Generate pseudo 512-d normalized embedding from cropped face spatial features
-                face_crop = cv2.resize(gray[y:y+fh, x:x+fw], (32, 32)).flatten().astype(np.float32)
-                # Pad/project to 512
-                emb = np.resize(face_crop, (512,))
-                norm = np.linalg.norm(emb)
-                if norm > 1e-6:
-                    emb = emb / norm
-                results.append({
-                    "bbox": (x, y, x + fw, y + fh),
-                    "embedding": emb,
-                    "landmarks": None,
-                    "det_score": 0.85
-                })
+        if hasattr(self, "cascade") and self.cascade is not None and not self.cascade.empty():
+            try:
+                gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+                dets = self.cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
+                for (x, y, fw, fh) in dets:
+                    # Generate pseudo 512-d normalized embedding from cropped face spatial features
+                    face_crop = cv2.resize(gray[y:y+fh, x:x+fw], (32, 32)).flatten().astype(np.float32)
+                    # Pad/project to 512
+                    emb = np.resize(face_crop, (512,))
+                    norm = np.linalg.norm(emb)
+                    if norm > 1e-6:
+                        emb = emb / norm
+                    results.append({
+                        "bbox": (x, y, x + fw, y + fh),
+                        "embedding": emb,
+                        "landmarks": None,
+                        "det_score": 0.85
+                    })
+            except Exception as e:
+                pass
 
         return results
 
