@@ -30,20 +30,9 @@ class HeadPoseEstimator:
 
         self.KEYPOINT_INDICES = [1, 152, 33, 263, 61, 291]
 
-        try:
-            import mediapipe as mp
-            if hasattr(mp, "solutions") and hasattr(mp.solutions, "face_mesh"):
-                self.mp_face_mesh = mp.solutions.face_mesh
-                self.face_mesh = self.mp_face_mesh.FaceMesh(
-                    static_image_mode=False,
-                    max_num_faces=4,
-                    refine_landmarks=True,
-                    min_detection_confidence=0.5,
-                    min_tracking_confidence=0.5
-                )
-                self.use_mediapipe = True
-        except Exception as e:
-            self.use_mediapipe = False
+        # Lazy load MediaPipe only when fallback is needed to save 150MB RAM
+        self.use_mediapipe = False
+        self.mp_face_mesh = None
 
     def estimate_pose(
         self,

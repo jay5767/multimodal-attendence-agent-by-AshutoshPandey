@@ -20,7 +20,17 @@ class FaceEngine:
         self._init_insightface()
 
     def _init_insightface(self):
-        """Initializes InsightFace FaceAnalysis with CUDA and CPU fallback."""
+        """Initializes InsightFace FaceAnalysis with CUDA, CPU, and ultra-lean cloud fallbacks."""
+        is_cloud = bool(os.environ.get("RENDER") or os.environ.get("LOW_MEMORY"))
+        model_path = Path(self.root_dir) / "models" / Config.INSIGHTFACE_MODEL
+        if is_cloud and not model_path.exists():
+            print("[FaceEngine] Cloud 512MB mode active: skipping heavy zip download, using lightweight OpenCV engine.")
+            self.app = None
+            self.active_provider = "CPU (Lean Fallback)"
+            self.is_gpu = False
+            self.cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+            return
+
         try:
             import insightface
             import onnxruntime as ort
@@ -31,14 +41,18 @@ class FaceEngine:
                 desired_providers.append("CUDAExecutionProvider")
             desired_providers.append("CPUExecutionProvider")
 
+            # Only load detection and recognition to save >250MB RAM (skips 140MB 3D model)
+            allowed = ['detection', 'recognition'] if is_cloud else None
             self.app = insightface.app.FaceAnalysis(
                 name=Config.INSIGHTFACE_MODEL,
                 root=self.root_dir,
+                allowed_modules=allowed,
                 providers=desired_providers
             )
-            # ctx_id: 0 for GPU if CUDA available, -1 for CPU
             ctx_id = 0 if ("CUDAExecutionProvider" in desired_providers and "CUDAExecutionProvider" in available_providers) else -1
-            self.app.prepare(ctx_id=ctx_id, det_size=(Config.TARGET_WIDTH, Config.TARGET_HEIGHT))
+            det_w = 320 if is_cloud else Config.TARGET_WIDTH
+            det_h = 240 if is_cloud else Config.TARGET_HEIGHT
+            self.app.prepare(ctx_id=ctx_id, det_size=(det_w, det_h))
 
             if ctx_id == 0:
                 self.active_provider = "CUDA (GPU)"
@@ -52,7 +66,6 @@ class FaceEngine:
             self.app = None
             self.active_provider = "CPU (Fallback)"
             self.is_gpu = False
-            # Haar cascade fallback
             self.cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
     def get_acceleration_info(self) -> Dict[str, Any]:

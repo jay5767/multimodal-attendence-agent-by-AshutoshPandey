@@ -12,40 +12,46 @@ env/
 *.db-wal
 *.db-shm
 *.sqlite
-data/*.db
+data/
 
-# Large Models & Pretrained Weights
-models/*.pt
-models/*.weights
+# Machine Learning Models & Heavy Weights
+models/
 *.pt
 *.weights
+*.onnx
 *.zip
 data/insightface/
-# Track lean ONNX model for zero-torch low-RAM cloud deployment
-!models/yolov8n.onnx
+
+# Generated outputs & exports
+outputs/
 
 # Media & Recorded Videos
-data/videos/*
-data/sample_videos/*
 *.mp4
 *.avi
 *.mov
 *.mkv
 *.wav
 
-# Generated Reports & Output Artifacts
-outputs/reports/*
-outputs/snapshots/*
-outputs/annotated_videos/*
-*.pdf
+# Unused legacy UI & Streamlit folders
+core/
+views/
+services/
+ui/
+database/
+.streamlit/
 
-# IDE & OS caches
+# Tests & Verification scripts
+tests/
+capture_verification_screens.py
+download_libs.py
+verify_anon_and_enrollment.py
+verify_live_features.py
+
+# Binaries & IDE configs
+cloudflared.exe
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 .agents/
 .env
-
-# Cloudflare tunnel binary
-cloudflared.exe
