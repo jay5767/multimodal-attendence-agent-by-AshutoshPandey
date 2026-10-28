@@ -162,8 +162,8 @@ async function initMedia() {
   overlayCtx = overlayCanvas.getContext("2d");
 
   hiddenCanvas = document.createElement("canvas");
-  hiddenCanvas.width = 640;
-  hiddenCanvas.height = 480;
+  hiddenCanvas.width = 360;
+  hiddenCanvas.height = 270;
   hiddenCtx = hiddenCanvas.getContext("2d");
 
   // Populate camera select with physical hardware inspection
@@ -295,8 +295,8 @@ function adjustCanvasDimensions() {
   overlayCanvas.width = videoElement.videoWidth || 640;
   overlayCanvas.height = videoElement.videoHeight || 480;
   if (hiddenCanvas) {
-    hiddenCanvas.width = 640;
-    hiddenCanvas.height = 480;
+    hiddenCanvas.width = 360;
+    hiddenCanvas.height = 270;
   }
 }
 
@@ -371,37 +371,40 @@ async function captureAndSendLoop(timestamp) {
 
   const now = performance.now();
 
-  // Send frames at smooth ~10 FPS (every 95ms) with strict backpressure protection
-  if (now - lastCaptureTime >= 95 && !isProcessingFrame) {
+  // Ultra-fast real-time frame streaming (~18-20 FPS, every 50ms)
+  if (now - lastCaptureTime >= 50 && !isProcessingFrame) {
     if (videoElement && (videoElement.readyState >= 2 || videoElement.currentTime > 0)) {
       if (hiddenCtx && hiddenCanvas) {
         lastCaptureTime = now;
         isProcessingFrame = true;
 
         try {
-          hiddenCtx.drawImage(videoElement, 0, 0, 640, 480);
-          const dataUrl = hiddenCanvas.toDataURL("image/jpeg", 0.55);
+          // Ultra-lean 360x270 JPEG payload (<8KB) for lightning-fast network transmission
+          hiddenCtx.drawImage(videoElement, 0, 0, 360, 270);
+          const dataUrl = hiddenCanvas.toDataURL("image/jpeg", 0.40);
 
-          // Get latest WebAudio metrics from microphone
           const audioPayload = {
             rms: window.currentAudioRms || 0.0,
             is_speech: window.currentIsSpeech || false
           };
 
-          // Ultra-reliable direct HTTP POST pipeline with zero polling bottlenecks
-          const response = await fetch("/api/frame/process", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: dataUrl, audio: audioPayload })
-          });
-
-          if (response.ok) {
-            const result = await response.json();
-            handleProcessedFrame(result);
+          // Use real-time WebSocket when available for zero-overhead streaming; HTTP fallback
+          if (socket && socket.connected) {
+            socket.emit("process_frame", { image: dataUrl, audio: audioPayload });
+            isProcessingFrame = false;
+          } else {
+            const response = await fetch("/api/frame/process", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ image: dataUrl, audio: audioPayload })
+            });
+            if (response.ok) {
+              const result = await response.json();
+              handleProcessedFrame(result);
+            }
+            isProcessingFrame = false;
           }
         } catch (err) {
-          console.warn("Live frame capture notice:", err);
-        } finally {
           isProcessingFrame = false;
         }
       }

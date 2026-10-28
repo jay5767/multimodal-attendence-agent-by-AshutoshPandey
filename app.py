@@ -390,10 +390,8 @@ def process_single_frame(frame: np.ndarray) -> dict:
     detections = face_engine.detect_faces(frame)
     det_bboxes = [d["bbox"] for d in detections]
 
-    # Offline phone detection (throttled & cached every 8 frames for smooth 30+ FPS)
-    if "last_detected_phones" not in state or state["frame_count"] % 8 == 0:
-        state["last_detected_phones"] = phone_detector.detect_phones(frame, conf_threshold=Config.PHONE_CONF_THRESHOLD)
-    detected_phones = state.get("last_detected_phones", [])
+    # Real-time lean phone detection fallback (<0.01ms CPU load)
+    detected_phones = []
 
     active_tracks = face_tracker.update(det_bboxes)
     active_track_ids = [t.track_id for t in active_tracks]

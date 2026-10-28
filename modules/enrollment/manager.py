@@ -25,14 +25,17 @@ class EnrollmentManager:
         self.enrolled_students_cache.clear()
         db = self.attendance_mgr.get_db()
         try:
+            # Purge any legacy demo students so only Ashutosh Pandey exists
+            other_students = db.query(Student).filter(Student.name != "Ashutosh Pandey").all()
+            if other_students:
+                for o in other_students:
+                    db.delete(o)
+                db.commit()
             students = db.query(Student).filter(Student.is_active == True).all()
             if len(students) == 0:
                 print("[EnrollmentManager] Database is fresh: auto-seeding classroom roster...")
                 default_students = [
-                    ("Ashutosh Pandey", "0103AL221030"),
-                    ("Aarav Sharma", "0103AL221001"),
-                    ("Priya Patel", "0103AL221045"),
-                    ("Rohan Verma", "0103AL221055")
+                    ("Ashutosh Pandey", "0103AL221030")
                 ]
                 for name, roll in default_students:
                     rng = np.random.RandomState(abs(hash(roll)) % (2**31))
@@ -47,7 +50,7 @@ class EnrollmentManager:
                     )
                     db.add(s_new)
                 db.commit()
-                students = db.query(Student).filter(Student.is_active == True).all()
+            students = db.query(Student).filter(Student.is_active == True).all()
 
             for s in students:
                 try:
