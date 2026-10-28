@@ -760,30 +760,22 @@ function updateTrackedStudentsUI(faces, data) {
 
   if (!faces || faces.length === 0) {
     listEl.innerHTML = `
-      <div style="text-align: center; padding: 24px 16px; color: var(--text-muted); font-size: 13px;">
+      <div style="text-align: center; padding: 22px 14px; color: var(--text-muted); font-size: 13px;">
         <div style="font-size: 26px; margin-bottom: 6px;">👀</div>
-        <div style="color: #FFF; font-weight: 600;">No students detected in camera frame</div>
-        <div style="font-size: 11px; margin-top: 4px;">Center your face in front of the webcam to begin tracking</div>
+        <div style="color: #FFF; font-weight: 600;">Camera Ready</div>
+        <div style="font-size: 11px; margin-top: 4px;">Point camera toward students or align face in view</div>
       </div>
     `;
     return;
   }
 
+  const isSessionActive = data ? Boolean(data.session_active) : false;
+
   let html = "";
   faces.forEach((f, idx) => {
     const isLooking = f.is_looking;
     const behavior = f.behavior || (isLooking ? "Focused" : "Distracted");
-    const eng = f.engagement !== undefined ? f.engagement : (isLooking ? 94 : 21);
-    const telemetry = f.telemetry || {
-      gaze: isLooking ? 95 : 25,
-      move: Math.round(Math.min(100, Math.max(10, (f.movement || 0.2) * 100))),
-      eyes: isLooking ? 92 : 30,
-      pitch: Math.round(Math.max(15, 100 - Math.abs(f.pitch || 0) * 2.5)),
-      mouth: 20,
-      hand: 1,
-      alert: (f.has_phone || behavior.includes("Sleeping")) ? 15 : 90,
-      confidence: Math.round((f.similarity || 0.95) * 100)
-    };
+    const eng = f.engagement !== undefined ? f.engagement : (isLooking ? 94 : 25);
 
     let stateClass = "state-distracted";
     let stateLabel = "DISTRACTED";
@@ -791,7 +783,7 @@ function updateTrackedStudentsUI(faces, data) {
 
     if (f.has_phone || behavior.includes("Phone") || behavior.includes("PHONE")) {
       stateClass = "state-phone";
-      stateLabel = "PHONE USAGE";
+      stateLabel = "PHONE DETECTED";
       accentColor = "#EF4444";
     } else if (behavior.includes("Sleeping") || behavior.includes("Head Down")) {
       stateClass = "state-sleeping";
@@ -805,48 +797,36 @@ function updateTrackedStudentsUI(faces, data) {
 
     const displayName = f.name && f.name !== "Unknown" ? f.name : `Learner ${String.fromCharCode(65 + (idx % 26))}`;
 
+    // Attendance label
+    let attPill = `<span style="font-size: 11px; color: #94A3B8; background: rgba(255,255,255,0.06); padding: 3px 10px; border-radius: 999px;">● Standby (Ready)</span>`;
+    if (isSessionActive) {
+      const attRec = (data.attendance || []).find(r => r.student_name === f.name || r.id === f.track_id);
+      if (attRec && (attRec.status === "Present" || attRec.sustained_verified)) {
+        attPill = `<span style="font-size: 11px; color: #34D399; background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 10px; border-radius: 999px; font-weight: 600;">● Verified Present</span>`;
+      } else if (attRec && attRec.status === "Partial") {
+        attPill = `<span style="font-size: 11px; color: #FBBF24; background: rgba(245, 158, 11, 0.16); border: 1px solid rgba(245, 158, 11, 0.35); padding: 3px 10px; border-radius: 999px; font-weight: 600;">● In Session (Active)</span>`;
+      } else {
+        attPill = `<span style="font-size: 11px; color: #60A5FA; background: rgba(59, 130, 246, 0.16); border: 1px solid rgba(59, 130, 246, 0.35); padding: 3px 10px; border-radius: 999px; font-weight: 600;">● In Session</span>`;
+      }
+    }
+
     html += `
-      <div class="tracked-student-card ${stateClass}" style="border-left: 4px solid ${accentColor};">
-        <div class="student-card-top">
+      <div class="tracked-student-card ${stateClass}" style="border-left: 4px solid ${accentColor}; margin-bottom: 10px;">
+        <div class="student-card-top" style="margin-bottom: 10px;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span class="student-card-title">${displayName}</span>
             <span class="student-status-badge badge-${stateClass}">${stateLabel}</span>
           </div>
-          <div style="text-align: right;">
-            <div class="student-card-score" style="color: ${accentColor};">${eng}%</div>
-            <div class="student-card-conf">conf ${telemetry.confidence}%</div>
-          </div>
+          <div class="student-card-score" style="color: ${accentColor}; font-size: 26px;">${eng}%</div>
         </div>
 
-        <div class="telemetry-grid">
-          <div class="tele-item">
-            <div class="tele-label">Gaze <span class="tele-tick">✓</span></div>
-            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.gaze}%; background: ${accentColor};"></div></div>
-          </div>
-          <div class="tele-item">
-            <div class="tele-label">Move <span class="tele-tick">✓</span></div>
-            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.move}%; background: ${accentColor};"></div></div>
-          </div>
-          <div class="tele-item">
-            <div class="tele-label">Eyes <span class="tele-tick">✓</span></div>
-            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.eyes}%; background: ${accentColor};"></div></div>
-          </div>
-          <div class="tele-item">
-            <div class="tele-label">Pitch <span class="tele-tick">✓</span></div>
-            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.pitch}%; background: ${accentColor};"></div></div>
-          </div>
-          <div class="tele-item">
-            <div class="tele-label">Mouth <span class="tele-icon">🎙</span></div>
-            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.mouth}%; background: #A78BFA;"></div></div>
-          </div>
-          <div class="tele-item">
-            <div class="tele-label">Hand <span class="tele-tick">✓</span></div>
-            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.hand ? 80 : 0}%; background: #10B981;"></div></div>
-          </div>
-          <div class="tele-item" style="grid-column: span 2;">
-            <div class="tele-label">Alert <span class="tele-icon">⚡</span></div>
-            <div class="tele-track"><div class="tele-fill" style="width: ${telemetry.alert}%; background: ${telemetry.alert < 50 ? '#EF4444' : accentColor};"></div></div>
-          </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          ${attPill}
+          <span style="font-size: 11px; color: var(--text-muted);">${f.roll && f.roll !== '-' ? f.roll : 'Camera Feed 1'}</span>
+        </div>
+
+        <div class="clean-eng-bar-track">
+          <div class="clean-eng-bar-fill" style="width: ${eng}%; background: ${accentColor};"></div>
         </div>
       </div>
     `;
@@ -858,43 +838,43 @@ function updateTrackedStudentsUI(faces, data) {
 function updateKPIsUI(faces, data) {
   const countEl = document.getElementById("kpi-students-count");
   const avgEl = document.getElementById("kpi-avg-engagement");
-  const handsEl = document.getElementById("kpi-hand-raises");
-  const confEl = document.getElementById("kpi-confusion");
-
-  if (data && data.kpi) {
-    if (countEl) countEl.innerText = data.kpi.students;
-    if (avgEl) avgEl.innerText = `${data.kpi.avg}%`;
-    if (handsEl) handsEl.innerText = data.kpi.hand_raises;
-    if (confEl) confEl.innerText = data.kpi.confusion;
-    return;
-  }
+  const sessionStatusEl = document.getElementById("kpi-session-status");
+  const presentEl = document.getElementById("kpi-present-count");
 
   const count = faces ? faces.length : 0;
   if (countEl) countEl.innerText = count;
 
-  let avg = 75;
-  let hands = 0;
-  let confusion = 0;
-
+  let avg = 0;
   if (count > 0) {
     let sumEng = 0;
     faces.forEach(f => {
       const isLooking = f.is_looking;
-      const eng = f.engagement !== undefined ? f.engagement : (isLooking ? 94 : 21);
+      const eng = f.engagement !== undefined ? f.engagement : (isLooking ? 94 : 25);
       sumEng += eng;
-      if (f.telemetry && f.telemetry.hand) hands++;
-      if (!isLooking || f.has_phone || (f.behavior && (f.behavior.includes("Distracted") || f.behavior.includes("Away") || f.behavior.includes("Sleeping")))) {
-        confusion++;
-      }
     });
     avg = Math.round(sumEng / count);
   } else if (data && data.gauge !== undefined) {
     avg = Math.round(data.gauge);
   }
 
-  if (avgEl) avgEl.innerText = `${avg}%`;
-  if (handsEl) handsEl.innerText = hands;
-  if (confEl) confEl.innerText = confusion;
+  if (avgEl) avgEl.innerText = count > 0 ? `${avg}%` : "--%";
+
+  const isSessionActive = data ? Boolean(data.session_active) : false;
+  if (sessionStatusEl) {
+    if (isSessionActive) {
+      sessionStatusEl.innerText = "ACTIVE";
+      sessionStatusEl.style.color = "#10B981";
+    } else {
+      sessionStatusEl.innerText = "STANDBY";
+      sessionStatusEl.style.color = "#FBBF24";
+    }
+  }
+
+  let presentCount = 0;
+  if (data && data.attendance) {
+    presentCount = data.attendance.filter(r => r.status === "Present" || r.sustained_verified).length;
+  }
+  if (presentEl) presentEl.innerText = presentCount;
 }
 
 function updateEngagementGauge(score) {

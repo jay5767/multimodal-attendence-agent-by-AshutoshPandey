@@ -101,81 +101,136 @@
       </div>
     </div>
 
-    <!-- Right: Modern Telemetry Panel Matching Reference UI -->
-    <div class="telemetry-right-column">
-      <!-- 1. Tracked Students Card -->
-      <div class="card tracked-students-panel">
-        <div class="panel-header-row">
-          <span class="panel-title-eyebrow">TRACKED STUDENTS</span>
-          <span class="badge-detected-pill" id="tracked-students-badge">0 detected</span>
-        </div>
-        <div id="tracked-students-list" class="tracked-students-container">
-          <div style="text-align: center; padding: 22px 14px; color: var(--text-muted); font-size: 13px;">
-            <div style="font-size: 26px; margin-bottom: 6px;">👀</div>
-            <div style="color: #FFF; font-weight: 600;">Live Camera Ready</div>
-            <div style="font-size: 11px; margin-top: 4px;">Faces detected will appear here with live telemetry</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 2. Four KPI Metric Cards (STUDENTS, AVG, HAND RAISES, CONFUSION) -->
-      <div class="kpi-quad-grid">
-        <div class="kpi-mini-card">
-          <div class="kpi-mini-label">STUDENTS</div>
-          <div class="kpi-mini-value" id="kpi-students-count">0</div>
-        </div>
-        <div class="kpi-mini-card">
-          <div class="kpi-mini-label">AVG</div>
-          <div class="kpi-mini-value" id="kpi-avg-engagement">--%</div>
-        </div>
-        <div class="kpi-mini-card">
-          <div class="kpi-mini-label">HAND RAISES</div>
-          <div class="kpi-mini-value color-emerald" id="kpi-hand-raises">0</div>
-        </div>
-        <div class="kpi-mini-card">
-          <div class="kpi-mini-label">CONFUSION</div>
-          <div class="kpi-mini-value color-crimson" id="kpi-confusion">0</div>
-        </div>
-      </div>
-
-      <!-- 3. Composite Class Gauge Card -->
-      <div class="gauge-card" style="padding: 18px; margin-top: 4px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 12px;">
-          <h3 style="font-size: 12px; margin: 0; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted);">Composite Class Gauge</h3>
-          <span class="hw-badge" style="font-size: 10px;">Active Ingestion</span>
-        </div>
-        
-        <div style="position: relative; display: flex; align-items: center; justify-content: center; margin: 4px 0;">
-          <svg class="gauge-svg" viewBox="0 0 180 180" style="width: 130px; height: 130px;">
-            <circle class="gauge-bg-circle" cx="90" cy="90" r="80"></circle>
-            <circle class="gauge-bar-circle" id="gauge-circle" cx="90" cy="90" r="80"></circle>
-          </svg>
-          <div class="gauge-center-text">
-            <div class="gauge-value" id="gauge-score" style="font-size: 26px;">75%</div>
-            <div class="gauge-metric-label" style="font-size: 10px;">Composite</div>
-          </div>
-        </div>
-
-        <!-- Sub-metrics Grid -->
-        <div style="width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; text-align: left;">
-          <div style="background: var(--bg-section); padding: 8px 10px; border-radius: 6px; border: var(--border-subtle);">
-            <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Visual Gaze</div>
-            <div style="font-size: 15px; font-weight: 700; color: #FFF;" id="metric-attention">80%</div>
-          </div>
-          <div style="background: var(--bg-section); padding: 8px 10px; border-radius: 6px; border: var(--border-subtle);">
-            <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Movement</div>
-            <div style="font-size: 15px; font-weight: 700; color: #FFF;" id="metric-movement">55%</div>
-          </div>
-          <div style="background: var(--bg-section); padding: 8px 10px; border-radius: 6px; border: var(--border-subtle);">
-            <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Inactivity</div>
-            <div style="font-size: 15px; font-weight: 700; color: #FFF;" id="metric-inactivity">4.2s</div>
-          </div>
-          <div style="background: var(--bg-section); padding: 8px 10px; border-radius: 6px; border: var(--border-subtle);">
-            <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Speech Ratio</div>
-            <div style="font-size: 15px; font-weight: 700; color: #FFF;" id="metric-audio">0.25</div>
-          </div>
-        </div>
-      </div>
+    <!-- Right: Modern Telemetry Panel Matching Reference UI -->
+
+    <div class="telemetry-right-column">
+
+      <!-- 1. Tracked Students Card -->
+
+      <div class="card tracked-students-panel">
+
+        <div class="panel-header-row">
+
+          <span class="panel-title-eyebrow">TRACKED STUDENTS</span>
+
+          <span class="badge-detected-pill" id="tracked-students-badge">0 detected</span>
+
+        </div>
+
+        <div id="tracked-students-list" class="tracked-students-container">
+
+          <div style="text-align: center; padding: 22px 14px; color: var(--text-muted); font-size: 13px;">
+
+            <div style="font-size: 26px; margin-bottom: 6px;">👀</div>
+
+            <div style="color: #FFF; font-weight: 600;">Live Camera Ready</div>
+
+            <div style="font-size: 11px; margin-top: 4px;">Faces detected will appear here with live telemetry</div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- 2. Clean Classroom KPI Metric Cards -->
+      <div class="kpi-quad-grid">
+        <div class="kpi-mini-card">
+          <div class="kpi-mini-label">STUDENTS</div>
+          <div class="kpi-mini-value" id="kpi-students-count">0</div>
+        </div>
+        <div class="kpi-mini-card">
+          <div class="kpi-mini-label">AVG ENGAGEMENT</div>
+          <div class="kpi-mini-value" id="kpi-avg-engagement">--%</div>
+        </div>
+        <div class="kpi-mini-card">
+          <div class="kpi-mini-label">SESSION STATUS</div>
+          <div class="kpi-mini-value" id="kpi-session-status" style="font-size: 18px; color: #FBBF24;">STANDBY</div>
+        </div>
+        <div class="kpi-mini-card">
+          <div class="kpi-mini-label">VERIFIED PRESENT</div>
+          <div class="kpi-mini-value color-emerald" id="kpi-present-count">0</div>
+        </div>
+      </div>
+
+      <!-- 3. Composite Class Gauge Card -->
+
+      <div class="gauge-card" style="padding: 18px; margin-top: 4px;">
+
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 12px;">
+
+          <h3 style="font-size: 12px; margin: 0; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted);">Composite Class Gauge</h3>
+
+          <span class="hw-badge" style="font-size: 10px;">Active Ingestion</span>
+
+        </div>
+
+        
+
+        <div style="position: relative; display: flex; align-items: center; justify-content: center; margin: 4px 0;">
+
+          <svg class="gauge-svg" viewBox="0 0 180 180" style="width: 130px; height: 130px;">
+
+            <circle class="gauge-bg-circle" cx="90" cy="90" r="80"></circle>
+
+            <circle class="gauge-bar-circle" id="gauge-circle" cx="90" cy="90" r="80"></circle>
+
+          </svg>
+
+          <div class="gauge-center-text">
+
+            <div class="gauge-value" id="gauge-score" style="font-size: 26px;">75%</div>
+
+            <div class="gauge-metric-label" style="font-size: 10px;">Composite</div>
+
+          </div>
+
+        </div>
+
+
+
+        <!-- Sub-metrics Grid -->
+
+        <div style="width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; text-align: left;">
+
+          <div style="background: var(--bg-section); padding: 8px 10px; border-radius: 6px; border: var(--border-subtle);">
+
+            <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Visual Gaze</div>
+
+            <div style="font-size: 15px; font-weight: 700; color: #FFF;" id="metric-attention">80%</div>
+
+          </div>
+
+          <div style="background: var(--bg-section); padding: 8px 10px; border-radius: 6px; border: var(--border-subtle);">
+
+            <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Movement</div>
+
+            <div style="font-size: 15px; font-weight: 700; color: #FFF;" id="metric-movement">55%</div>
+
+          </div>
+
+          <div style="background: var(--bg-section); padding: 8px 10px; border-radius: 6px; border: var(--border-subtle);">
+
+            <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Inactivity</div>
+
+            <div style="font-size: 15px; font-weight: 700; color: #FFF;" id="metric-inactivity">4.2s</div>
+
+          </div>
+
+          <div style="background: var(--bg-section); padding: 8px 10px; border-radius: 6px; border: var(--border-subtle);">
+
+            <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Speech Ratio</div>
+
+            <div style="font-size: 15px; font-weight: 700; color: #FFF;" id="metric-audio">0.25</div>
+
+          </div>
+
+        </div>
+
+      </div>
+
     </div>
   </div>
 

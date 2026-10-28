@@ -76,24 +76,24 @@ class HeadPoseEstimator:
                 # Roll: eye horizon angle
                 roll = float(np.degrees(np.arctan2(re[1] - le[1], re[0] - le[0])))
 
-                # Behavioral state classification
-                if pitch < -14.0 or (pitch < -8.0 and inactivity_seconds > 2.0) or (abs(roll) > 18.0 and inactivity_seconds > 2.0):
-                    behavior = "Sleeping / Head Down"
-                    is_looking = False
-                elif inactivity_seconds > 4.0:
-                    behavior = "Drowsy / Inactive"
-                    is_looking = False
-                elif pitch < -6.0:
-                    behavior = "Looking Down"
-                    is_looking = False
-                elif abs(yaw) > Config.BOARD_YAW_MAX:
-                    behavior = "Looking Away"
-                    is_looking = False
-                elif pitch > 16.0:
-                    behavior = "Looking Up"
-                    is_looking = False
-                else:
-                    behavior = "Focused"
+                # Realistic classroom behavioral state classification
+                if pitch < -24.0 or (pitch < -16.0 and inactivity_seconds > 8.0):
+                    behavior = "Sleeping / Head Down"
+                    is_looking = False
+                elif inactivity_seconds > 20.0:
+                    behavior = "Drowsy / Inactive"
+                    is_looking = False
+                elif pitch < -16.0:
+                    behavior = "Looking Down / Reading"
+                    is_looking = False
+                elif abs(yaw) > 28.0:
+                    behavior = "Looking Away"
+                    is_looking = False
+                elif pitch > 22.0:
+                    behavior = "Looking Up"
+                    is_looking = False
+                else:
+                    behavior = "Focused"
                     is_looking = True
 
                 return {

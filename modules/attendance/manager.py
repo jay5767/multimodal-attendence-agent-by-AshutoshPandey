@@ -181,13 +181,9 @@ class AttendanceManager:
         self.student_presence_seconds: Dict[int, float] = {}
         self.last_frame_epoch: float = time.time()
 
-        # Auto-activate live session so attendance recording is active immediately
-        self._ensure_clean_startup_state()
-        try:
-            self.start_session("Live Classroom Lecture - CSE AIML", "AL-501")
-            print("[AttendanceManager] Auto-started default session: Live Classroom Lecture (AL-501)")
-        except Exception as ex:
-            print(f"[AttendanceManager] Notice on auto-session: {ex}")
+        # Ensure clean standby mode on startup: wait for user to click 'Start Session'
+        self._ensure_clean_startup_state()
+        print("[AttendanceManager] System initialized in Standby mode. Waiting for user to start session.")
 
     def _ensure_clean_startup_state(self):
         """Cleanly archives any old dangling session so startup is strictly in Standby mode."""
@@ -285,34 +281,62 @@ class AttendanceManager:
             if not all_students:
                 return []
 
-            # Standby / Live Preview when no formal session is active
-            if self.active_session_id is None:
-                preview_records = []
-                for student in all_students:
-                    sid = student.id
-                    is_detected = (sid in detected_student_ids)
-                    if is_detected:
-                        self.student_presence_seconds[sid] = self.student_presence_seconds.get(sid, 0.0) + dt
-                        now_str = datetime.utcnow().strftime("%H:%M:%S")
-                    else:
-                        now_str = "--"
-
-                    sec = self.student_presence_seconds.get(sid, 0.0)
-                    is_sustained = (sec >= 3.5)
-                    status_text = "Present" if is_sustained else ("In Frame" if is_detected else "Standby")
-                    preview_records.append({
-                        "id": sid,
-                        "session_id": 0,
-                        "student_id": sid,
-                        "student_name": student.to_dict(anonymous)["name"],
-                        "roll_number": student.to_dict(anonymous)["roll_number"],
-                        "first_seen": now_str if is_detected else "--",
-                        "last_seen": now_str if is_detected else "--",
-                        "total_presence_seconds": round(sec, 1),
-                        "status": status_text,
-                        "sustained_verified": is_sustained,
-                        "sustained_ratio": min(100.0, round((sec / 4.0) * 100.0, 1)) if is_detected else (100.0 if is_sustained else 0.0)
-                    })
+            # Standby / Live Preview when no formal session is active
+
+            if self.active_session_id is None:
+
+                preview_records = []
+
+                for student in all_students:
+
+                    sid = student.id
+
+                    is_detected = (sid in detected_student_ids)
+
+                    if is_detected:
+
+                        self.student_presence_seconds[sid] = self.student_presence_seconds.get(sid, 0.0) + dt
+
+                        now_str = datetime.utcnow().strftime("%H:%M:%S")
+
+                    else:
+
+                        now_str = "--"
+
+
+
+                    sec = self.student_presence_seconds.get(sid, 0.0)
+
+                    is_sustained = (sec >= 3.5)
+
+                    status_text = "Present" if is_sustained else ("In Frame" if is_detected else "Standby")
+
+                    preview_records.append({
+
+                        "id": sid,
+
+                        "session_id": 0,
+
+                        "student_id": sid,
+
+                        "student_name": student.to_dict(anonymous)["name"],
+
+                        "roll_number": student.to_dict(anonymous)["roll_number"],
+
+                        "first_seen": now_str if is_detected else "--",
+
+                        "last_seen": now_str if is_detected else "--",
+
+                        "total_presence_seconds": round(sec, 1),
+
+                        "status": status_text,
+
+                        "sustained_verified": is_sustained,
+
+                        "sustained_ratio": min(100.0, round((sec / 4.0) * 100.0, 1)) if is_detected else (100.0 if is_sustained else 0.0)
+
+                    })
+
                 return preview_records
 
             # Active formal session tracking

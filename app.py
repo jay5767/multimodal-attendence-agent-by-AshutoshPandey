@@ -24,7 +24,6 @@ from modules.vision.face_engine import FaceEngine
 from modules.vision.tracker import FaceTracker
 from modules.vision.head_pose import HeadPoseEstimator
 from modules.vision.movement import MovementAnalyzer
-from modules.vision.hand_detector import HandRaiseDetector
 from modules.vision.camera_server import ServerCameraStream
 from modules.vision.phone_detector import PhoneDetector
 from modules.audio.capture import AudioStreamManager
@@ -49,7 +48,6 @@ face_tracker = FaceTracker()
 head_pose_estimator = HeadPoseEstimator()
 movement_analyzer = MovementAnalyzer()
 phone_detector = PhoneDetector()
-hand_detector = HandRaiseDetector()
 server_cam = ServerCameraStream()
 audio_mgr = AudioStreamManager()
 fusion_engine = MultimodalFusionEngine(attendance_mgr)
@@ -433,12 +431,16 @@ def process_single_frame(frame: np.ndarray) -> dict:
         yaw, pitch, is_looking = pose["yaw"], pose["pitch"], pose["is_looking_at_board"]
         behavior = pose.get("behavior", "Focused")
 
-        # Phone usage detection & spatial correlation with anti-glitch debounce
-        has_phone, matched_phone, phone_reason = phone_detector.match_phone_to_face(
-            bbox, detected_phones, pitch=pitch, frame_shape=(processed_h, processed_w), track_id=int(track_id)
-        )
-        # Dedicated optical hand-raise detector with anti-jitter debouncing
-        is_hand_raised = hand_detector.update(int(track_id), frame, [int(b) for b in bbox])
+        # Phone usage detection & spatial correlation with anti-glitch debounce
+
+        has_phone, matched_phone, phone_reason = phone_detector.match_phone_to_face(
+
+            bbox, detected_phones, pitch=pitch, frame_shape=(processed_h, processed_w), track_id=int(track_id)
+
+        )
+
+        # Dedicated optical hand-raise detector with anti-jitter debouncing
+
         if has_phone:
             behavior = "📱 Phone Usage / Distracted"
             is_looking = False  # Phone distraction breaks visual board attention
@@ -546,48 +548,17 @@ def process_single_frame(frame: np.ndarray) -> dict:
 
             "similarity": round(float(sim), 3) if sim is not None else 0.0,
 
-            "yaw": round(float(yaw), 1),
-
-            "pitch": round(float(pitch), 1),
-
             "is_looking": bool(is_looking),
 
             "behavior": str(behavior),
 
             "has_phone": bool(has_phone),
 
-            "phone_reason": str(phone_reason or ""),
-
-            "movement": round(float(mov_score), 1),
-
-            "inactivity": round(float(inact_sec), 1),
-
-            "engagement": int(learner_eng),
-
-            "telemetry": {
-
-                "gaze": int(gaze_pct),
-
-                "move": int(move_pct),
-
-                "eyes": int(eyes_pct),
-
-                "pitch": int(pitch_pct),
-
-                "mouth": int(mouth_pct),
-
-                "hand": 1 if is_hand_raised else 0,
-
-                "alert": int(alert_pct),
-
-                "confidence": int(round(sim * 100)) if (sim is not None and sim > 0) else 100
-
-            }
+            "engagement": int(learner_eng)
 
         })
 
     movement_analyzer.cleanup(active_track_ids)
-    hand_detector.cleanup(active_track_ids)
     phone_detector.cleanup(active_track_ids)
     state["last_faces_cache"] = faces_payload
 
@@ -648,29 +619,23 @@ def process_single_frame(frame: np.ndarray) -> dict:
 
     kpi_avg = round(sum(f["engagement"] for f in faces_payload) / max(1, len(faces_payload))) if faces_payload else instant_gauge
 
-    kpi_hands = sum(1 for f in faces_payload if f.get("telemetry", {}).get("hand", 0) > 0)
-
-    kpi_confusion = sum(1 for f in faces_payload if (not f.get("is_looking", True) or f.get("has_phone", False) or "Sleeping" in f.get("behavior", "") or "Distracted" in f.get("behavior", "")))
-
-
+    is_session_active = bool(active_session_id is not None)
+    present_count = len([r for r in attendance_records if r.get("status") in ("Present", "Late") or r.get("sustained_verified")])
 
     return {
-
+        "frame_size": [processed_w, processed_h],
+        "session_active": is_session_active,
+        "kpi": {
+            "students": kpi_students,
+            "avg": kpi_avg,
+            "session_status": "Active" if is_session_active else "Standby",
+            "present_count": present_count
+        },
         "faces": faces_payload,
 
         "phones": detected_phones,
 
-        "kpi": {
 
-            "students": kpi_students,
-
-            "avg": kpi_avg,
-
-            "hand_raises": kpi_hands,
-
-            "confusion": kpi_confusion
-
-        },
         "gauge": instant_gauge,
         "fps": state["fps"],
         "hardware": face_engine.get_acceleration_info(),
