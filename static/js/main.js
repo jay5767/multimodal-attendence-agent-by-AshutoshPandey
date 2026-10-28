@@ -537,8 +537,8 @@ function drawFaceOverlays(faces, phones = []) {
 
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-  const frameW = (window.lastProcessedFrameSize && window.lastProcessedFrameSize[0]) ? window.lastProcessedFrameSize[0] : (hiddenCanvas ? hiddenCanvas.width : 640.0);
-  const frameH = (window.lastProcessedFrameSize && window.lastProcessedFrameSize[1]) ? window.lastProcessedFrameSize[1] : (hiddenCanvas ? hiddenCanvas.height : 480.0);
+  const frameW = (window.lastProcessedFrameSize && window.lastProcessedFrameSize[0]) ? window.lastProcessedFrameSize[0] : (hiddenCanvas ? hiddenCanvas.width : 360.0);
+  const frameH = (window.lastProcessedFrameSize && window.lastProcessedFrameSize[1]) ? window.lastProcessedFrameSize[1] : (hiddenCanvas ? hiddenCanvas.height : 270.0);
 
   const scaleX = overlayCanvas.width / frameW;
   const scaleY = overlayCanvas.height / frameH;
@@ -572,7 +572,7 @@ function drawFaceOverlays(faces, phones = []) {
     });
   }
 
-  // 2. Draw Detected Faces with Strict Deduplication (Guarantee 1 box per person)
+  // 2. Draw Detected Faces with Strict Deduplication (Guarantee exactly 1 box per student)
   if (!faces || faces.length === 0) return;
 
   const uniqueFaces = [];
@@ -587,8 +587,8 @@ function drawFaceOverlays(faces, phones = []) {
       const fcy = (fy1 + fy2) / 2;
       const dist = Math.hypot(fcx - ucx, fcy - ucy);
       const minDim = Math.min(ux2 - ux1, uy2 - uy1, fx2 - fx1, fy2 - fy1);
-      // Suppress if bounding boxes overlap closely or same name has duplicate box
-      if (dist < minDim * 0.50 || (u.name === f.name && dist < minDim * 1.2)) {
+      // Suppress if bounding boxes overlap closely or same student detected twice
+      if (dist < minDim * 0.50 || (u.name === f.name && dist < minDim * 1.5)) {
         isDupe = true;
         break;
       }
@@ -609,9 +609,10 @@ function drawFaceOverlays(faces, phones = []) {
     const boxW = drawX2 - drawX1;
     const boxH = drawY2 - drawY1;
 
-    // Determine state: Simple, accurate Green / Red classification
+    // Engagement score and visual attention state
     const isLooking = Boolean(face.is_looking);
     const behavior = face.behavior || (isLooking ? "Focused" : "Distracted");
+    const eng = face.engagement !== undefined ? face.engagement : (isLooking ? 94 : 21);
 
     let isDistracted = false;
     let statusText = "";
@@ -619,42 +620,46 @@ function drawFaceOverlays(faces, phones = []) {
 
     if (face.has_phone || behavior.includes("Phone") || behavior.includes("PHONE")) {
       isDistracted = true;
-      statusText = "Phone Detected";
+      statusText = "PHONE DETECTED";
       boxColor = "#EF4444"; // Alert Red
     } else if (behavior.includes("Sleeping") || behavior.includes("Head Down")) {
       isDistracted = true;
-      statusText = "Sleeping";
+      statusText = "SLEEPING";
       boxColor = "#EF4444";
     } else if (behavior.includes("Away") || !isLooking) {
       isDistracted = true;
-      statusText = "Looking Away";
-      boxColor = "#EF4444";
-    } else if (behavior.includes("Drowsy") || behavior.includes("Distracted")) {
+      statusText = "LOOKING AWAY";
+      boxColor = "#F59E0B"; // Warm Gold / Amber
+    } else if (behavior.includes("Drowsy") || behavior.includes("Distracted") || eng < 50) {
       isDistracted = true;
-      statusText = "Distracted";
-      boxColor = "#EF4444";
+      statusText = "DISTRACTED";
+      boxColor = "#F59E0B"; // Warm Gold / Amber
     }
 
     // Student display name
     let displayName = face.name;
     if (isAnonymousMode) {
-      displayName = `Learner ${String.fromCharCode(65 + (idx % 26))}`;
+      displayName = `LEARNER ${String.fromCharCode(65 + (idx % 26))}`;
     } else if (!displayName || displayName === "Unknown") {
-      displayName = "Ashutosh Pandey";
+      displayName = "ASHUTOSH PANDEY";
+    } else {
+      displayName = displayName.toUpperCase();
     }
 
     overlayCtx.save();
 
-    // 1. Draw Clean Bounding Box (Green when Focused, Red when Distracted)
+    // 1. Draw Sleek Bounding Box with Rounded Corners (matching reference image)
     overlayCtx.strokeStyle = boxColor;
     overlayCtx.lineWidth = 2.5;
     overlayCtx.beginPath();
-    overlayCtx.roundRect(drawX1, drawY1, boxW, boxH, 8);
+    overlayCtx.roundRect(drawX1, drawY1, boxW, boxH, 14);
     overlayCtx.stroke();
 
-    // 2. High-Tech Corner Accent Brackets
-    const cornerSize = Math.max(10, Math.min(18, Math.min(boxW, boxH) * 0.22));
+    // 2. Corner Accent Brackets
+    const cornerSize = Math.max(12, Math.min(20, Math.min(boxW, boxH) * 0.22));
     overlayCtx.lineWidth = 3.5;
+    overlayCtx.strokeStyle = boxColor;
+
     // Top-Left
     overlayCtx.beginPath();
     overlayCtx.moveTo(drawX1, drawY1 + cornerSize);
@@ -680,47 +685,131 @@ function drawFaceOverlays(faces, phones = []) {
     overlayCtx.lineTo(drawX2, drawY2 - cornerSize);
     overlayCtx.stroke();
 
-    // 3. Floating Pill Above Box: Just Student Name when focused; Alert when distracted
-    overlayCtx.font = "600 13px Inter, -apple-system, sans-serif";
-    let labelText;
-    if (isDistracted) {
-      labelText = `${displayName}  •  ${statusText}`;
-    } else {
-      // User request: remove the "focused" part from the detection
-      labelText = displayName;
-    }
+    // 3. Top Attached Pill: [ ● LEARNER / NAME   21% ] (matching reference image)
+    overlayCtx.font = "700 11px Inter, -apple-system, sans-serif";
+    const nameWidth = Math.ceil(overlayCtx.measureText(displayName).width);
+    const scoreText = `${eng}%`;
+    overlayCtx.font = "800 14px Inter, -apple-system, sans-serif";
+    const scoreWidth = Math.ceil(overlayCtx.measureText(scoreText).width);
 
-    const textWidth = Math.ceil(overlayCtx.measureText(labelText).width);
-    const pillW = textWidth + 34;
-    const pillH = 30;
+    const pillPadLeft = 14;
+    const dotW = 8;
+    const dotGap = 8;
+    const midGap = 16;
+    const badgePadX = 8;
+    const badgeW = scoreWidth + (badgePadX * 2);
+    const pillPadRight = 6;
+    const pillW = pillPadLeft + dotW + dotGap + nameWidth + midGap + badgeW + pillPadRight;
+    const pillH = 34;
+
     let pillX = drawX1 + (boxW - pillW) / 2;
     pillX = Math.max(6, Math.min(overlayCanvas.width - pillW - 6, pillX));
-    let pillY = drawY1 - pillH - 8;
+    let pillY = drawY1 - pillH - 6;
     if (pillY < 6) pillY = drawY1 + 8; // If near top edge, place inside box
 
-    // Pill background
-    overlayCtx.fillStyle = "rgba(15, 23, 42, 0.92)";
+    // Main dark glass pill body
+    overlayCtx.fillStyle = "rgba(20, 24, 35, 0.94)";
     overlayCtx.beginPath();
-    overlayCtx.roundRect(pillX, pillY, pillW, pillH, 8);
+    overlayCtx.roundRect(pillX, pillY, pillW, pillH, 10);
     overlayCtx.fill();
     overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.14)";
     overlayCtx.lineWidth = 1;
     overlayCtx.stroke();
 
-    // Status Indicator Dot
+    // Status Dot indicator
+    const dotCenterX = pillX + pillPadLeft + 4;
+    const dotCenterY = pillY + pillH / 2;
+    overlayCtx.fillStyle = boxColor;
+    overlayCtx.shadowColor = boxColor;
+    overlayCtx.shadowBlur = 8;
+    overlayCtx.beginPath();
+    overlayCtx.arc(dotCenterX, dotCenterY, 4, 0, Math.PI * 2);
+    overlayCtx.fill();
+    overlayCtx.shadowBlur = 0;
+
+    // Student Name in bold clean font
+    const nameStartX = dotCenterX + 4 + dotGap;
+    overlayCtx.fillStyle = "#FFFFFF";
+    overlayCtx.font = "700 11px Inter, -apple-system, sans-serif";
+    overlayCtx.textAlign = "left";
+    overlayCtx.textBaseline = "middle";
+    overlayCtx.fillText(displayName, nameStartX, dotCenterY);
+
+    // Right Percentage Capsule Badge inside top pill
+    const badgeX = pillX + pillW - badgeW - pillPadRight;
+    const badgeH = pillH - 8;
+    const badgeY = pillY + 4;
+    overlayCtx.fillStyle = "rgba(255, 255, 255, 0.08)";
+    overlayCtx.beginPath();
+    overlayCtx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+    overlayCtx.fill();
+
+    overlayCtx.fillStyle = boxColor;
+    overlayCtx.font = "800 13px Inter, -apple-system, sans-serif";
+    overlayCtx.textAlign = "center";
+    overlayCtx.textBaseline = "middle";
+    overlayCtx.fillText(scoreText, badgeX + badgeW / 2, badgeY + badgeH / 2);
+
+    // 4. Vertical Attention Meter alongside Right Edge of Face Box (matching reference image)
+    const meterW = 6;
+    const meterH = Math.max(38, Math.min(130, boxH * 0.65));
+    const meterX = Math.min(overlayCanvas.width - meterW - 4, drawX2 + 10);
+    const meterY = drawY1 + (boxH - meterH) / 2;
+
+    // Track
+    overlayCtx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    overlayCtx.beginPath();
+    overlayCtx.roundRect(meterX, meterY, meterW, meterH, 3);
+    overlayCtx.fill();
+    overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+    overlayCtx.lineWidth = 1;
+    overlayCtx.stroke();
+
+    // Fill portion from bottom
+    const fillRatio = Math.max(0.05, Math.min(1.0, eng / 100.0));
+    const fillH = Math.max(4, meterH * fillRatio);
+    const fillY = meterY + meterH - fillH;
+
     overlayCtx.fillStyle = boxColor;
     overlayCtx.shadowColor = boxColor;
     overlayCtx.shadowBlur = 6;
     overlayCtx.beginPath();
-    overlayCtx.arc(pillX + 13, pillY + pillH / 2, 4.5, 0, Math.PI * 2);
+    overlayCtx.roundRect(meterX, fillY, meterW, fillH, 3);
     overlayCtx.fill();
     overlayCtx.shadowBlur = 0;
 
-    // Student Name text
-    overlayCtx.fillStyle = "#FFFFFF";
-    overlayCtx.textAlign = "left";
-    overlayCtx.textBaseline = "middle";
-    overlayCtx.fillText(labelText, pillX + 24, pillY + pillH / 2);
+    // 5. Bottom Floating Status Pill: [ DISTRACTED ] (Only when distracted/alert, matching reference image)
+    if (isDistracted && statusText) {
+      overlayCtx.font = "800 11px Inter, -apple-system, sans-serif";
+      const statusTextWidth = Math.ceil(overlayCtx.measureText(statusText).width);
+      const bPillW = statusTextWidth + 34;
+      const bPillH = 26;
+      let bPillX = drawX1 + (boxW - bPillW) / 2;
+      bPillX = Math.max(6, Math.min(overlayCanvas.width - bPillW - 6, bPillX));
+      let bPillY = drawY2 + 10;
+      if (bPillY + bPillH > overlayCanvas.height - 6) {
+        bPillY = drawY2 - bPillH - 8;
+      }
+
+      // Pill with border matching state
+      overlayCtx.fillStyle = "rgba(20, 24, 35, 0.94)";
+      overlayCtx.beginPath();
+      overlayCtx.roundRect(bPillX, bPillY, bPillW, bPillH, 999);
+      overlayCtx.fill();
+
+      overlayCtx.strokeStyle = boxColor;
+      overlayCtx.lineWidth = 1.8;
+      overlayCtx.shadowColor = boxColor;
+      overlayCtx.shadowBlur = 8;
+      overlayCtx.stroke();
+      overlayCtx.shadowBlur = 0;
+
+      // Status text
+      overlayCtx.fillStyle = boxColor;
+      overlayCtx.textAlign = "center";
+      overlayCtx.textBaseline = "middle";
+      overlayCtx.fillText(statusText, bPillX + bPillW / 2, bPillY + bPillH / 2);
+    }
 
     overlayCtx.restore();
   });

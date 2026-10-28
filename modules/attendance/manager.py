@@ -3,7 +3,8 @@ import json
 import time
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text
+import threading
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, event
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from config import Config
 
@@ -163,16 +164,29 @@ class AttendanceManager:
     """
     def __init__(self, db_uri: Optional[str] = None):
         uri = db_uri or Config.SQLALCHEMY_DATABASE_URI
+        connect_args = {"check_same_thread": False, "timeout": 30.0}
         try:
-            self.engine = create_engine(uri, echo=False, connect_args={"check_same_thread": False})
+            self.engine = create_engine(uri, echo=False, connect_args=connect_args)
+            @event.listens_for(self.engine, "connect")
+            def set_sqlite_pragma(dbapi_connection, connection_record):
+                try:
+                    cursor = dbapi_connection.cursor()
+                    cursor.execute("PRAGMA journal_mode=WAL")
+                    cursor.execute("PRAGMA synchronous=NORMAL")
+                    cursor.execute("PRAGMA busy_timeout=30000")
+                    cursor.close()
+                except Exception:
+                    pass
             Base.metadata.create_all(self.engine)
         except Exception as e:
             print(f"[AttendanceManager] Warning: failed to initialize SQLite at {uri} ({e}). Falling back to :memory: database.")
-            self.engine = create_engine("sqlite:///:memory:", echo=False, connect_args={"check_same_thread": False})
+            self.engine = create_engine("sqlite:///:memory:", echo=False, connect_args=connect_args)
             Base.metadata.create_all(self.engine)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
         # In-memory tracking for active session rolling presence windows
+        self._db_lock = threading.Lock()
+        self._last_db_commit_epoch = 0.0
         self.active_session_id: Optional[int] = None
         self.session_start_epoch: float = 0.0
         # Rolling window history per student: list of (epoch_time: float, was_detected: bool)
@@ -181,8 +195,10 @@ class AttendanceManager:
         self.student_presence_seconds: Dict[int, float] = {}
         self.last_frame_epoch: float = time.time()
 
-        # Ensure clean standby mode on startup: wait for user to click 'Start Session'
-        self._ensure_clean_startup_state()
+        # Ensure clean standby mode on startup: wait for user to click 'Start Session'
+
+        self._ensure_clean_startup_state()
+
         print("[AttendanceManager] System initialized in Standby mode. Waiting for user to start session.")
 
     def _ensure_clean_startup_state(self):
@@ -275,139 +291,123 @@ class AttendanceManager:
         dt = max(0.01, min(1.0, now - self.last_frame_epoch))
         self.last_frame_epoch = now
 
-        db = self.get_db()
-        try:
-            all_students = db.query(Student).filter(Student.is_active == True).all()
-            if not all_students:
-                return []
+        with self._db_lock:
+            db = self.get_db()
+            try:
+                all_students = db.query(Student).filter(Student.is_active == True).all()
+                if not all_students:
+                    return []
 
-            # Standby / Live Preview when no formal session is active
+                # Standby / Live Preview when no formal session is active
+                if self.active_session_id is None:
+                    preview_records = []
+                    for student in all_students:
+                        sid = student.id
+                        is_detected = (sid in detected_student_ids)
+                        if is_detected:
+                            self.student_presence_seconds[sid] = self.student_presence_seconds.get(sid, 0.0) + dt
+                            now_str = datetime.utcnow().strftime("%H:%M:%S")
+                        else:
+                            now_str = "--"
 
-            if self.active_session_id is None:
+                        sec = self.student_presence_seconds.get(sid, 0.0)
+                        is_sustained = (sec >= 3.5)
+                        status_text = "Present" if is_sustained else ("In Frame" if is_detected else "Standby")
+                        preview_records.append({
+                            "id": sid,
+                            "session_id": 0,
+                            "student_id": sid,
+                            "student_name": student.to_dict(anonymous)["name"],
+                            "roll_number": student.to_dict(anonymous)["roll_number"],
+                            "first_seen": now_str if is_detected else "--",
+                            "last_seen": now_str if is_detected else "--",
+                            "total_presence_seconds": round(sec, 1),
+                            "status": status_text,
+                            "sustained_verified": is_sustained,
+                            "sustained_ratio": min(100.0, round((sec / 4.0) * 100.0, 1)) if is_detected else (100.0 if is_sustained else 0.0)
+                        })
+                    return preview_records
 
-                preview_records = []
+                # Active formal session tracking
+                records = db.query(AttendanceRecord).filter(AttendanceRecord.session_id == self.active_session_id).all()
+                rec_map = {r.student_id: r for r in records}
+                window_cutoff = now - Config.ROLLING_WINDOW_SECONDS
+                updated_records = []
 
                 for student in all_students:
-
                     sid = student.id
+                    if sid not in self.student_window_history:
+                        self.student_window_history[sid] = []
 
                     is_detected = (sid in detected_student_ids)
+                    self.student_window_history[sid].append((now, is_detected))
+
+                    # Prune history older than rolling window
+                    self.student_window_history[sid] = [
+                        (t, det) for (t, det) in self.student_window_history[sid] if t >= window_cutoff
+                    ]
+
+                    # Overall window ratio
+                    window = self.student_window_history[sid]
+                    total_in_window = len(window)
+                    detected_in_window = sum(1 for (_, det) in window if det)
+                    overall_ratio = (detected_in_window / total_in_window) if total_in_window > 0 else 0.0
+
+                    # Recent 10-second active presence ratio
+                    recent_cutoff = now - 10.0
+                    recent_window = [det for (t, det) in window if t >= recent_cutoff]
+                    recent_ratio = (sum(1 for d in recent_window if d) / len(recent_window)) if recent_window else 0.0
+
+                    effective_ratio = max(overall_ratio, recent_ratio)
+
+                    rec = rec_map.get(sid)
+                    if not rec:
+                        rec = AttendanceRecord(session_id=self.active_session_id, student_id=sid, status="Absent", sustained_verified=False)
+                        db.add(rec)
+                        db.flush()
 
                     if is_detected:
-
                         self.student_presence_seconds[sid] = self.student_presence_seconds.get(sid, 0.0) + dt
+                        rec.total_presence_seconds = self.student_presence_seconds[sid]
+                        rec.last_seen = datetime.utcnow()
+                        if rec.first_seen is None:
+                            rec.first_seen = datetime.utcnow()
 
-                        now_str = datetime.utcnow().strftime("%H:%M:%S")
+                    rec.frames_total += 1
+                    if is_detected:
+                        rec.frames_present += 1
 
-                    else:
+                    # Sustained presence trigger (verified if sustained over window or >= 5 seconds presence)
+                    if (len(recent_window) >= 8 and recent_ratio >= Config.SUSTAINED_PRESENCE_RATIO) or (total_in_window >= 5 and overall_ratio >= Config.SUSTAINED_PRESENCE_RATIO) or (rec.total_presence_seconds >= 5.0 and is_detected):
+                        rec.sustained_verified = True
+                        elapsed_since_start = now - self.session_start_epoch
+                        if rec.status == "Absent" or rec.status == "Partial":
+                            if elapsed_since_start <= Config.LATE_GRACE_PERIOD_SECONDS:
+                                rec.status = "Present"
+                            else:
+                                rec.status = "Late"
+                    elif rec.sustained_verified:
+                        pass
+                    elif is_detected or (rec.total_presence_seconds >= 1.5 and rec.status == "Absent"):
+                        rec.status = "Partial"
 
-                        now_str = "--"
+                    updated_records.append(rec.to_dict(anonymous=anonymous, sustained_ratio=effective_ratio * 100.0))
 
-
-
-                    sec = self.student_presence_seconds.get(sid, 0.0)
-
-                    is_sustained = (sec >= 3.5)
-
-                    status_text = "Present" if is_sustained else ("In Frame" if is_detected else "Standby")
-
-                    preview_records.append({
-
-                        "id": sid,
-
-                        "session_id": 0,
-
-                        "student_id": sid,
-
-                        "student_name": student.to_dict(anonymous)["name"],
-
-                        "roll_number": student.to_dict(anonymous)["roll_number"],
-
-                        "first_seen": now_str if is_detected else "--",
-
-                        "last_seen": now_str if is_detected else "--",
-
-                        "total_presence_seconds": round(sec, 1),
-
-                        "status": status_text,
-
-                        "sustained_verified": is_sustained,
-
-                        "sustained_ratio": min(100.0, round((sec / 4.0) * 100.0, 1)) if is_detected else (100.0 if is_sustained else 0.0)
-
-                    })
-
-                return preview_records
-
-            # Active formal session tracking
-            records = db.query(AttendanceRecord).filter(AttendanceRecord.session_id == self.active_session_id).all()
-            rec_map = {r.student_id: r for r in records}
-            window_cutoff = now - Config.ROLLING_WINDOW_SECONDS
-            updated_records = []
-
-            for student in all_students:
-                sid = student.id
-                if sid not in self.student_window_history:
-                    self.student_window_history[sid] = []
-
-                is_detected = (sid in detected_student_ids)
-                self.student_window_history[sid].append((now, is_detected))
-
-                # Prune history older than rolling window
-                self.student_window_history[sid] = [
-                    (t, det) for (t, det) in self.student_window_history[sid] if t >= window_cutoff
-                ]
-
-                # Overall window ratio
-                window = self.student_window_history[sid]
-                total_in_window = len(window)
-                detected_in_window = sum(1 for (_, det) in window if det)
-                overall_ratio = (detected_in_window / total_in_window) if total_in_window > 0 else 0.0
-
-                # Recent 10-second active presence ratio
-                recent_cutoff = now - 10.0
-                recent_window = [det for (t, det) in window if t >= recent_cutoff]
-                recent_ratio = (sum(1 for d in recent_window if d) / len(recent_window)) if recent_window else 0.0
-
-                effective_ratio = max(overall_ratio, recent_ratio)
-
-                rec = rec_map.get(sid)
-                if not rec:
-                    rec = AttendanceRecord(session_id=self.active_session_id, student_id=sid, status="Absent", sustained_verified=False)
-                    db.add(rec)
-                    db.flush()
-
-                if is_detected:
-                    self.student_presence_seconds[sid] = self.student_presence_seconds.get(sid, 0.0) + dt
-                    rec.total_presence_seconds = self.student_presence_seconds[sid]
-                    rec.last_seen = datetime.utcnow()
-                    if rec.first_seen is None:
-                        rec.first_seen = datetime.utcnow()
-
-                rec.frames_total += 1
-                if is_detected:
-                    rec.frames_present += 1
-
-                # Sustained presence trigger (verified if sustained over window or >= 5 seconds presence)
-                if (len(recent_window) >= 8 and recent_ratio >= Config.SUSTAINED_PRESENCE_RATIO) or (total_in_window >= 5 and overall_ratio >= Config.SUSTAINED_PRESENCE_RATIO) or (rec.total_presence_seconds >= 5.0 and is_detected):
-                    rec.sustained_verified = True
-                    elapsed_since_start = now - self.session_start_epoch
-                    if rec.status == "Absent" or rec.status == "Partial":
-                        if elapsed_since_start <= Config.LATE_GRACE_PERIOD_SECONDS:
-                            rec.status = "Present"
-                        else:
-                            rec.status = "Late"
-                elif rec.sustained_verified:
+                try:
+                    db.commit()
+                except Exception as commit_err:
+                    db.rollback()
+                    print(f"[AttendanceManager] Commit notice: {commit_err}")
+                return updated_records
+            except Exception as e:
+                try:
+                    db.rollback()
+                except Exception:
                     pass
-                elif is_detected or (rec.total_presence_seconds >= 1.5 and rec.status == "Absent"):
-                    rec.status = "Partial"
-
-                updated_records.append(rec.to_dict(anonymous=anonymous, sustained_ratio=effective_ratio * 100.0))
-
-            db.commit()
-            return updated_records
-        finally:
-            db.close()
+                print(f"[AttendanceManager] process_frame notice: {e}")
+                return []
+            finally:
+                db.close()
 
     def end_session(self) -> Optional[Dict[str, Any]]:
         """
