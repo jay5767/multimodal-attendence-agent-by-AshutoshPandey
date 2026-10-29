@@ -240,12 +240,27 @@ async function startCamera(deviceId = null) {
     window.cameraStream = null;
   }
 
-  const constraints = deviceId
-    ? { video: { deviceId: { ideal: deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }
-    : { video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }, audio: false };
+  const baseVideoConstraints = deviceId
+    ? { deviceId: { ideal: deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+    : { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" };
 
   try {
-    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    // Attempt combined camera + microphone for a single seamless prompt
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: baseVideoConstraints,
+        audio: true
+      });
+      if (typeof setupWebAudioFromStream === "function") {
+        setupWebAudioFromStream(cameraStream);
+      }
+    } catch (micErr) {
+      console.warn("Combined video+audio failed, falling back to video only:", micErr);
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: baseVideoConstraints,
+        audio: false
+      });
+    }
     window.cameraStream = cameraStream;
     if (videoElement) {
       videoElement.srcObject = cameraStream;
@@ -1637,11 +1652,19 @@ let browserAudioContext = null;
 let browserAnalyser = null;
 let browserAudioInterval = null;
 
-async function initBrowserAudio() {
+function setupWebAudioFromStream(stream) {
   try {
-    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    browserAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const source = browserAudioContext.createMediaStreamSource(micStream);
+    const audioTracks = stream.getAudioTracks();
+    if (!audioTracks || audioTracks.length === 0) return;
+
+    if (!browserAudioContext) {
+      browserAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (browserAudioContext.state === "suspended") {
+      browserAudioContext.resume().catch(() => {});
+    }
+
+    const source = browserAudioContext.createMediaStreamSource(stream);
     browserAnalyser = browserAudioContext.createAnalyser();
     browserAnalyser.fftSize = 512;
     source.connect(browserAnalyser);
@@ -1677,7 +1700,17 @@ async function initBrowserAudio() {
       }
     }, 150);
 
-    console.log("🎤 Browser microphone connected with WebAudio AGC.");
+    console.log("🎤 Audio stream connected to WebAudio AGC analyser.");
+  } catch (err) {
+    console.warn("Could not setup WebAudio from stream:", err);
+  }
+}
+
+async function initBrowserAudio() {
+  if (browserAnalyser && browserAudioContext) return;
+  try {
+    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    setupWebAudioFromStream(micStream);
   } catch (e) {
     console.log("Browser microphone optional: using host sounddevice capture.");
   }

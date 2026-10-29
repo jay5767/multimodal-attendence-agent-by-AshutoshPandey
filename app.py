@@ -8,7 +8,7 @@ import os
 import sys
 import cv2
 import numpy as np
-from flask import Flask, render_template, request, jsonify, send_file, Response
+from flask import Flask, render_template, request, jsonify, send_file, Response, send_from_directory
 from flask_socketio import SocketIO, emit
 
 def sleep_async(seconds):
@@ -40,6 +40,11 @@ app = Flask(__name__)
 app.config.from_object(Config)
 socketio_mode = "gevent" if HAS_GEVENT else "threading"
 socketio = SocketIO(app, cors_allowed_origins="*", max_http_buffer_size=16 * 1024 * 1024, async_mode=socketio_mode)
+
+@app.route("/static/<path:filename>")
+def serve_static(filename):
+    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+    return send_from_directory(static_dir, filename)
 
 # Initialize modules
 attendance_mgr = AttendanceManager()
@@ -395,7 +400,18 @@ def process_single_frame(frame: np.ndarray) -> dict:
     det_bboxes = [d["bbox"] for d in detections]
 
     # Real-time lean phone detection fallback (<0.01ms CPU load)
+    state["total_frames_processed"] = state.get("total_frames_processed", 0) + 1
+    total_fc = state["total_frames_processed"]
     detected_phones = []
+    if hasattr(phone_detector, "is_loaded") and phone_detector.is_loaded:
+        if total_fc % 2 == 0 or "last_detected_phones" not in state:
+            try:
+                detected_phones = phone_detector.detect_phones(frame, conf_threshold=0.20)
+                state["last_detected_phones"] = detected_phones
+            except Exception as e:
+                detected_phones = state.get("last_detected_phones", [])
+        else:
+            detected_phones = state.get("last_detected_phones", [])
 
     active_tracks = face_tracker.update(det_bboxes)
     active_track_ids = [t.track_id for t in active_tracks]
@@ -556,7 +572,13 @@ def process_single_frame(frame: np.ndarray) -> dict:
 
     num_faces = max(1, len(faces_payload))
     avg_mov = total_movement / num_faces
-    avg_inact = total_inactivity / num_faces
+    if faces_payload:
+        state["user_last_seen_time"] = now
+        avg_inact = total_inactivity / num_faces
+    else:
+        if "user_last_seen_time" not in state:
+            state["user_last_seen_time"] = now
+        avg_inact = max(0.0, now - state["user_last_seen_time"])
 
     # High-accuracy continuous Visual Attention metric
     if faces_payload:
@@ -603,7 +625,7 @@ def process_single_frame(frame: np.ndarray) -> dict:
             sugg = suggestion_agent.generate_suggestion(active_session_id, "peak", interval_summary)
             socketio.emit("new_suggestion", sugg)
 
-    phone_count = sum(1 for f in faces_payload if f.get("has_phone", False))
+    phone_count = max(len(detected_phones), sum(1 for f in faces_payload if f.get("has_phone", False)))
     sleeping_count = sum(1 for f in faces_payload if "Sleeping" in f.get("behavior", "") or "Head Down" in f.get("behavior", ""))
     drowsy_count = sum(1 for f in faces_payload if "Drowsy" in f.get("behavior", ""))
     away_count = sum(1 for f in faces_payload if not f.get("is_looking", True))
@@ -744,6 +766,10 @@ def api_process_frame():
 @socketio.on("process_frame")
 def handle_process_frame(data):
     """Processes browser client base64 webcam frames."""
+    if "audio" in data and isinstance(data["audio"], dict):
+        aud = data["audio"]
+        audio_mgr.ingest_client_metric(float(aud.get("rms", 0.0)), bool(aud.get("is_speech", False)))
+
     img_b64 = data.get("image", "")
     if "," in img_b64:
         img_b64 = img_b64.split(",")[1]

@@ -100,15 +100,15 @@ class AudioStreamManager:
         """Allows browser clients to push live WebAudio volume/speech metrics directly."""
         with self.lock:
             self.last_metrics["rms_loudness"] = round(float(rms), 4)
-            if is_speech:
-                current_ratio = self.last_metrics.get("speech_ratio", 0.0)
-                self.last_metrics["speech_ratio"] = min(1.0, round(current_ratio * 0.8 + 0.25, 2))
+            current_ratio = self.last_metrics.get("speech_ratio", 0.0)
+            has_voice = is_speech or (rms > 0.003)
+            if has_voice:
+                self.last_metrics["speech_ratio"] = min(1.0, round(current_ratio * 0.75 + 0.25, 2))
                 self.last_metrics["classification"] = "Discussion / Active Speech"
-                self.last_metrics["is_discussion_burst"] = self.last_metrics["speech_ratio"] > 0.4
+                self.last_metrics["is_discussion_burst"] = self.last_metrics["speech_ratio"] > 0.35
             else:
-                current_ratio = self.last_metrics.get("speech_ratio", 0.0)
-                self.last_metrics["speech_ratio"] = max(0.0, round(current_ratio * 0.85, 2))
-                if self.last_metrics["speech_ratio"] < 0.08:
+                self.last_metrics["speech_ratio"] = max(0.0, round(current_ratio * 0.90, 2))
+                if self.last_metrics["speech_ratio"] < 0.05:
                     self.last_metrics["classification"] = "Silence / Quiet"
                     self.last_metrics["is_discussion_burst"] = False
             self.last_metrics["source"] = "browser_webaudio"

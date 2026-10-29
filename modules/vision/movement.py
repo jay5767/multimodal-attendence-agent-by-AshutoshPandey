@@ -50,18 +50,25 @@ class MovementAnalyzer:
             dist = np.hypot(c_cur[0] - c_prev[0], c_cur[1] - c_prev[1])
             disp_norm = float(dist / face_scale)
 
+        # Jitter deadband: camera sensor noise is typically <0.012 of face scale
+        deadband = 0.012
+        if disp_norm < deadband:
+            effective_disp = 0.0
+        else:
+            effective_disp = disp_norm - deadband
+
         # Scale displacement to normalized movement (0 to 1)
-        # Normal head motion is around 0.01 - 0.08 of face scale
-        raw_score = min(1.0, (disp_norm * 18.0) * self.sensitivity)
+        raw_score = min(1.0, (effective_disp * 16.0) * self.sensitivity)
         
         # Smooth with recent history
         td["movement_history"].append(raw_score)
-        if len(td["movement_history"]) > 15:
+        if len(td["movement_history"]) > 10:
             td["movement_history"].pop(0)
         smoothed_movement = float(np.mean(td["movement_history"]))
 
-        # Inactivity check: threshold ~ 0.05
-        if smoothed_movement > 0.07:
+        # Inactivity check: if smoothed movement is below 0.12 and raw score is small,
+        # student is stationary (inactivity_seconds accumulates)
+        if smoothed_movement > 0.12 or raw_score > 0.20:
             td["last_move_time"] = now
             td["inactivity_seconds"] = 0.0
         else:

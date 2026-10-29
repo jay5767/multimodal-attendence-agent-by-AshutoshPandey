@@ -107,8 +107,21 @@ async function fetchCurrentPeriod() {
   try {
     let url = "/api/timetable/current";
     const params = [];
-    if (simulationDay) params.push(`day=${simulationDay}`);
-    if (simulationTime) params.push(`time=${simulationTime}`);
+    if (simulationDay) {
+      params.push(`day=${simulationDay}`);
+    } else {
+      const now = new Date();
+      const days = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+      params.push(`day=${days[now.getDay()]}`);
+    }
+    if (simulationTime) {
+      params.push(`time=${simulationTime}`);
+    } else {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      params.push(`time=${hh}:${mm}`);
+    }
     if (params.length > 0) url += `?${params.join("&")}`;
 
     const res = await fetch(url);

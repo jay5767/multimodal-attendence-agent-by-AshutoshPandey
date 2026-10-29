@@ -229,8 +229,11 @@ class TimetableManager:
     def get_current_period(self, sim_day: Optional[str] = None, sim_time_str: Optional[str] = None) -> Dict[str, Any]:
         """
         Calculates the active period based on real-time clock, or simulated day/time.
+        LNCT Bhopal operates on Indian Standard Time (IST, UTC+5:30).
         """
-        now = datetime.now()
+        from datetime import timezone, timedelta
+        IST = timezone(timedelta(hours=5, minutes=30))
+        now = datetime.now(IST)
         
         # Day name 3-letter code (MON, TUE, WED, THU, FRI, SAT, SUN)
         day_code = sim_day.upper() if sim_day else now.strftime("%a").upper()
@@ -315,12 +318,12 @@ class TimetableManager:
             "period": "Off-Hours",
             "time_slot": "10:30 AM - 05:00 PM (Daily)",
             "time_remaining": next_text,
-            "subject_code": "AL-501",
-            "subject_title": "AL-501 Operating System (Standby)",
-            "faculty": "Dr. Aakriti Jain (AJ)",
-            "faculty_contact": "7987622028",
+            "subject_code": "STANDBY",
+            "subject_title": "Classroom Standby (College Hours: 10:30 AM - 05:00 PM)",
+            "faculty": "LNCT Academic Schedule",
+            "faculty_contact": "LNCT Academic Office",
             "room": "Room 4-B9 / CV Raman Block",
-            "accent_color": "#C5F82A",
+            "accent_color": "#94A3B8",
             "attention_rate": self.stats.get("AL-501", {}).get("attention_rate", 84.2),
             "distracted_phone": self.stats.get("AL-501", {}).get("distracted_phone", 14),
             "distracted_sleep": self.stats.get("AL-501", {}).get("distracted_sleep", 4),
