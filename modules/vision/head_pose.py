@@ -62,10 +62,10 @@ class HeadPoseEstimator:
             else:
                 return True, "Focused"
         else:
-            # Currently DISTRACTED: require at least 3 consecutive focused frames to switch back
-            recent_4 = list(buf)[-4:] if len(buf) >= 4 else list(buf)
-            focused_streak = sum(1 for (looking, _) in recent_4 if looking)
-            if focused_streak >= 3:
+            # Currently DISTRACTED: switch back to Focused promptly in 2 frames
+            recent_3 = list(buf)[-3:] if len(buf) >= 3 else list(buf)
+            focused_streak = sum(1 for (looking, _) in recent_3 if looking)
+            if focused_streak >= 2:
                 self._last_stable_state[track_id] = (True, "Focused")
                 return True, "Focused"
             else:
@@ -113,19 +113,21 @@ class HeadPoseEstimator:
 
                 # Realistic classroom thresholds with generous screen-view margins:
                 # Laptop/desktop screen interaction sits comfortably within pitch [-36 deg, +32 deg] and yaw [-42 deg, +42 deg].
-                if pitch < -42.0 or (pitch < -35.0 and inactivity_seconds > 8.0):
+                # Seated classroom/laptop interaction: screen viewing comfortably spans pitch [-18 deg, +20 deg] and yaw [-28 deg, +28 deg]
+                # Sitting still while watching the screen is high focus attentiveness, not sleeping!
+                if pitch < -24.0 or (pitch < -18.0 and inactivity_seconds > 8.0):
                     raw_behavior = "Sleeping / Head Down"
                     raw_looking = False
-                elif inactivity_seconds > 35.0:
+                elif inactivity_seconds > 45.0:
                     raw_behavior = "Drowsy / Inactive"
                     raw_looking = False
-                elif abs(yaw) > 42.0:
+                elif abs(yaw) > 28.0:
                     raw_behavior = "Looking Away"
                     raw_looking = False
-                elif pitch < -36.0:
+                elif pitch < -20.0:
                     raw_behavior = "Looking Down"
                     raw_looking = False
-                elif pitch > 36.0:
+                elif pitch > 22.0:
                     raw_behavior = "Looking Up"
                     raw_looking = False
                 else:
@@ -229,16 +231,16 @@ class HeadPoseEstimator:
             approx_yaw = float(((fc_x - center[0]) / center[0]) * 35.0)
             approx_pitch = float(((fc_y - center[1]) / center[1]) * 20.0)
 
-            if approx_pitch < -24.0 or (approx_pitch < -18.0 and inactivity_seconds > 6.0):
+            if approx_pitch < -30.0 or (approx_pitch < -24.0 and inactivity_seconds > 15.0):
                 raw_behavior = "Sleeping / Head Down"
                 raw_looking = False
-            elif inactivity_seconds > 30.0:
+            elif inactivity_seconds > 45.0:
                 raw_behavior = "Drowsy / Inactive"
                 raw_looking = False
-            elif abs(approx_yaw) > 38.0:
+            elif abs(approx_yaw) > 42.0:
                 raw_behavior = "Looking Away"
                 raw_looking = False
-            elif approx_pitch < -22.0:
+            elif approx_pitch < -28.0:
                 raw_behavior = "Looking Down"
                 raw_looking = False
             else:

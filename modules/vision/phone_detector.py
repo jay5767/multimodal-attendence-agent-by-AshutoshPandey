@@ -209,7 +209,7 @@ class PhoneDetector:
             state["count"] += 1
             if state["count"] >= 2:
                 state["active"] = True
-                state["cooldown"] = 4
+                state["cooldown"] = 3
                 state["phone"] = candidate_phone
                 state["reason"] = f"Cell Phone Detected ({candidate_phone['confidence']:.2f})"
         else:

@@ -8,6 +8,7 @@ import os
 import sys
 import cv2
 import numpy as np
+from collections import deque
 from flask import Flask, render_template, request, jsonify, send_file, Response, send_from_directory
 from flask_socketio import SocketIO, emit
 
@@ -523,17 +524,19 @@ def process_single_frame(frame: np.ndarray) -> dict:
         if has_phone:
             target_eng = 18
         elif "Sleeping" in behavior or "Head Down" in behavior:
-            target_eng = 8
+            target_eng = 10
         elif "Away" in behavior or "Distracted" in behavior or not is_looking:
-            target_eng = int(max(18, min(40, 0.4 * gaze_pct + 0.3 * pitch_pct + 0.3 * move_pct)))
+            target_eng = int(max(18, min(40, 0.45 * gaze_pct + 0.30 * pitch_pct + 0.25 * move_pct)))
         else:
-            target_eng = int(min(98, max(88, 0.5 * gaze_pct + 0.3 * pitch_pct + 0.2 * alert_pct)))
+            # Seated attentiveness facing screen: stillness is high focus!
+            target_eng = int(min(98, max(88, 0.60 * gaze_pct + 0.25 * pitch_pct + 0.15 * alert_pct)))
 
-        # EMA smoothing per face to eliminate frame-to-frame jumping
+        # Fast recovery when returning to focused (alpha=0.40), gentle decay when distracted
         if "student_eng_ema" not in state:
             state["student_eng_ema"] = {}
         prev_eng = state["student_eng_ema"].get(track_id, float(target_eng))
-        smoothed_eng = 0.82 * prev_eng + 0.18 * float(target_eng)
+        alpha = 0.40 if target_eng > prev_eng else 0.22
+        smoothed_eng = (1.0 - alpha) * prev_eng + alpha * float(target_eng)
         state["student_eng_ema"][track_id] = smoothed_eng
         learner_eng = int(round(smoothed_eng))
 
@@ -658,25 +661,13 @@ def process_single_frame(frame: np.ndarray) -> dict:
 
     kpi_students = len(faces_payload)
 
-    # 10-Second Stable Rolling Average for KPI card
-    if "avg_10s_buffer" not in state:
-        state["avg_10s_buffer"] = []
-        state["last_10s_avg_time"] = time.time()
-        state["cached_10s_avg"] = None
+    # Continuous 10-Second Sliding Window: smooth & stable, never freezes or gets stuck
+    if "avg_10s_buffer" not in state or not isinstance(state["avg_10s_buffer"], deque):
+        state["avg_10s_buffer"] = deque(maxlen=35)
 
     instant_avg = round(sum(f["engagement"] for f in faces_payload) / max(1, len(faces_payload))) if faces_payload else instant_gauge
     state["avg_10s_buffer"].append(instant_avg)
-
-    time_since_avg_update = now - state["last_10s_avg_time"]
-    if state["cached_10s_avg"] is None and len(state["avg_10s_buffer"]) >= 10:
-        state["cached_10s_avg"] = int(round(sum(state["avg_10s_buffer"]) / len(state["avg_10s_buffer"])))
-        state["last_10s_avg_time"] = now
-    elif time_since_avg_update >= 10.0 and state["avg_10s_buffer"]:
-        state["cached_10s_avg"] = int(round(sum(state["avg_10s_buffer"]) / len(state["avg_10s_buffer"])))
-        state["last_10s_avg_time"] = now
-        state["avg_10s_buffer"] = []
-
-    kpi_avg = state["cached_10s_avg"] if state["cached_10s_avg"] is not None else instant_avg
+    kpi_avg = int(round(sum(state["avg_10s_buffer"]) / len(state["avg_10s_buffer"])))
 
     is_session_active = bool(active_session_id is not None)
     present_count = len([r for r in attendance_records if r.get("status") in ("Present", "Late") or r.get("sustained_verified")])
