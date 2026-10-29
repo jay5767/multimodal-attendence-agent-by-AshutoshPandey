@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="100%" height="100%">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141E16"/>
+      <stop offset="50%" stop-color="#0D130F"/>
+      <stop offset="100%" stop-color="#050806"/>
+    </linearGradient>
+
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D9FB52"/>
+      <stop offset="100%" stop-color="#84CC16"/>
+    </linearGradient>
+
+    <linearGradient id="skinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F2C59D"/>
+      <stop offset="100%" stop-color="#DE9F6E"/>
+    </linearGradient>
+
+    <linearGradient id="hoodieGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E2922"/>
+      <stop offset="100%" stop-color="#111814"/>
+    </linearGradient>
+
+    <linearGradient id="hairGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2D231E"/>
+      <stop offset="100%" stop-color="#15100D"/>
+    </linearGradient>
+
+    <!-- Filters -->
+    <filter id="neonGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <style>
+      @keyframes floatAnim {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-5px); }
+      }
+      @keyframes pulseAura {
+        0%, 100% { opacity: 0.35; transform: scale(1); }
+        50% { opacity: 0.65; transform: scale(1.06); }
+      }
+      @keyframes gleamGlasses {
+        0%, 80%, 100% { opacity: 0.25; transform: translateX(0); }
+        88% { opacity: 0.85; transform: translateX(8px); }
+      }
+      @keyframes blinkEyes {
+        0%, 94%, 98%, 100% { transform: scaleY(1); }
+        96% { transform: scaleY(0.1); }
+      }
+      @keyframes particleFloat1 {
+        0% { transform: translateY(0) scale(0.8); opacity: 0; }
+        50% { opacity: 0.8; }
+        100% { transform: translateY(-24px) scale(1.1); opacity: 0; }
+      }
+      @keyframes particleFloat2 {
+        0% { transform: translateY(0) scale(0.9); opacity: 0; }
+        50% { opacity: 0.9; }
+        100% { transform: translateY(-28px) scale(1.2); opacity: 0; }
+      }
+      .avatar-group {
+        animation: floatAnim 4s ease-in-out infinite;
+        transform-origin: 120px 140px;
+      }
+      .tech-aura {
+        animation: pulseAura 3.5s ease-in-out infinite;
+        transform-origin: 120px 110px;
+      }
+      .glasses-shine {
+        animation: gleamGlasses 5s ease-in-out infinite;
+      }
+      .eye-blink {
+        animation: blinkEyes 4.5s ease-in-out infinite;
+        transform-origin: 120px 105px;
+      }
+      .particle-1 { animation: particleFloat1 3s ease-in-out infinite; }
+      .particle-2 { animation: particleFloat2 3.6s ease-in-out infinite 1.2s; }
+      .particle-3 { animation: particleFloat1 4s ease-in-out infinite 0.6s; }
+    </style>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="240" height="240" rx="28" fill="url(#bgGrad)"/>
+  <rect width="236" height="236" x="2" y="2" rx="26" fill="none" stroke="url(#accentGrad)" stroke-width="1.8" opacity="0.6"/>
+
+  <!-- Background Cyber Circuit Grid Lines -->
+  <g opacity="0.12" stroke="#C5F82A" stroke-width="1">
+    <line x1="20" y1="40" x2="220" y2="40" stroke-dasharray="4,4"/>
+    <line x1="20" y1="80" x2="220" y2="80" stroke-dasharray="6,6"/>
+    <line x1="20" y1="160" x2="220" y2="160" stroke-dasharray="6,6"/>
+    <line x1="20" y1="200" x2="220" y2="200" stroke-dasharray="4,4"/>
+    <line x1="40" y1="20" x2="40" y2="220" stroke-dasharray="4,4"/>
+    <line x1="200" y1="20" x2="200" y2="220" stroke-dasharray="4,4"/>
+  </g>
+
+  <!-- Animated Neon AI Aura -->
+  <circle class="tech-aura" cx="120" cy="110" r="66" fill="none" stroke="#C5F82A" stroke-width="2.5" opacity="0.4" filter="url(#neonGlow)"/>
+  <circle cx="120" cy="110" r="74" fill="none" stroke="#84CC16" stroke-width="1" stroke-dasharray="8,6" opacity="0.3"/>
+
+  <!-- Floating Code Particles -->
+  <g fill="#C5F82A" font-family="'Courier New', monospace" font-size="10" font-weight="bold">
+    <text class="particle-1" x="28" y="115" opacity="0">&lt;AI/&gt;</text>
+    <text class="particle-2" x="182" y="90" opacity="0">{CV}</text>
+    <text class="particle-3" x="38" y="170" opacity="0">101</text>
+  </g>
+
+  <!-- Animated Character Group -->
+  <g class="avatar-group">
+    <!-- Body / Dark Cyber Hoodie -->
+    <path d="M 60 238 C 60 185 85 168 120 168 C 155 168 180 185 180 238 Z" fill="url(#hoodieGrad)"/>
+    <path d="M 60 238 C 60 185 85 168 120 168 C 155 168 180 185 180 238 Z" fill="none" stroke="#2D3B31" stroke-width="2"/>
+
+    <!-- Hoodie Drawstrings & Neon Accent Trim -->
+    <path d="M 98 178 Q 102 210 102 225" fill="none" stroke="#C5F82A" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M 142 178 Q 138 210 138 225" fill="none" stroke="#C5F82A" stroke-width="2.2" stroke-linecap="round"/>
+    <!-- Chest Badge: AI Vision -->
+    <rect x="106" y="202" width="28" height="15" rx="4" fill="#0D130F" stroke="#C5F82A" stroke-width="1.2"/>
+    <text x="120" y="213" fill="#C5F82A" font-family="sans-serif" font-size="8" font-weight="900" text-anchor="middle">&lt;DEV&gt;</text>
+
+    <!-- Neck -->
+    <rect x="108" y="142" width="24" height="28" rx="6" fill="url(#skinGrad)"/>
+
+    <!-- Head / Face -->
+    <ellipse cx="120" cy="112" rx="36" ry="42" fill="url(#skinGrad)"/>
+
+    <!-- Modern Styled Hair -->
+    <path d="M 80 102 C 78 72 94 56 120 56 C 146 56 162 72 160 102 C 152 78 138 68 120 68 C 100 68 88 80 80 102 Z" fill="url(#hairGrad)"/>
+    <path d="M 86 86 C 96 68 114 62 134 65 C 148 68 156 78 156 86 C 146 76 132 72 120 74 C 106 76 96 82 86 86 Z" fill="#3D3028"/>
+
+    <!-- Over-Ear Studio Headphones (Tech Gear) -->
+    <!-- Headband -->
+    <path d="M 76 112 C 74 65 166 65 164 112" fill="none" stroke="#111814" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 78 112 C 76 68 164 68 162 112" fill="none" stroke="#C5F82A" stroke-width="2" stroke-dasharray="6,4"/>
+    <!-- Left Ear Cup -->
+    <rect x="70" y="98" width="13" height="30" rx="6" fill="#1C261F" stroke="#C5F82A" stroke-width="1.5"/>
+    <circle cx="76" cy="113" r="3" fill="#C5F82A"/>
+    <!-- Right Ear Cup -->
+    <rect x="157" y="98" width="13" height="30" rx="6" fill="#1C261F" stroke="#C5F82A" stroke-width="1.5"/>
+    <circle cx="163" cy="113" r="3" fill="#C5F82A"/>
+
+    <!-- Eyebrows -->
+    <path d="M 96 95 Q 106 91 114 94" fill="none" stroke="#221812" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 126 94 Q 134 91 144 95" fill="none" stroke="#221812" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Eyes (Blinking Animation) -->
+    <g class="eye-blink">
+      <!-- Left Eye -->
+      <ellipse cx="105" cy="106" rx="4.5" ry="5.5" fill="#15100D"/>
+      <circle cx="106.5" cy="104.5" r="1.8" fill="#FFFFFF"/>
+      <!-- Right Eye -->
+      <ellipse cx="135" cy="106" rx="4.5" ry="5.5" fill="#15100D"/>
+      <circle cx="136.5" cy="104.5" r="1.8" fill="#FFFFFF"/>
+    </g>
+
+    <!-- Smart Tech Glasses (Cyber Frame) -->
+    <g>
+      <!-- Left Frame -->
+      <rect x="94" y="98" width="22" height="17" rx="4" fill="rgba(197, 248, 42, 0.08)" stroke="#C5F82A" stroke-width="1.8"/>
+      <!-- Right Frame -->
+      <rect x="124" y="98" width="22" height="17" rx="4" fill="rgba(197, 248, 42, 0.08)" stroke="#C5F82A" stroke-width="1.8"/>
+      <!-- Bridge -->
+      <line x1="116" y1="105" x2="124" y2="105" stroke="#C5F82A" stroke-width="2"/>
+      <!-- Glare Reflection -->
+      <path class="glasses-shine" d="M 97 101 L 105 101 L 99 112 L 95 112 Z" fill="#FFFFFF" opacity="0.4"/>
+      <path class="glasses-shine" d="M 127 101 L 135 101 L 129 112 L 125 112 Z" fill="#FFFFFF" opacity="0.4"/>
+    </g>
+
+    <!-- Nose -->
+    <path d="M 120 108 L 117 122 L 123 122" fill="none" stroke="#C28456" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Friendly Confident Smile -->
+    <path d="M 112 131 Q 120 137 128 131" fill="none" stroke="#874722" stroke-width="2.2" stroke-linecap="round"/>
+  </g>
+
+  <!-- Bottom Interactive Tech Badge -->
+  <g transform="translate(48, 206)">
+    <rect width="144" height="24" rx="12" fill="#0D130F" stroke="#C5F82A" stroke-width="1.2" opacity="0.95"/>
+    <circle cx="14" cy="12" r="4" fill="#C5F82A">
+      <animate attributeName="opacity" values="0.4;1;0.4" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <text x="76" y="15" fill="#FFFFFF" font-family="'Inter', sans-serif" font-size="9" font-weight="700" text-anchor="middle" letter-spacing="0.5">ASHUTOSH PANDEY</text>
+  </g>
+</svg>

@@ -39,7 +39,8 @@ SUBJECTS_CATALOG = {
         "code": "AL-501",
         "title": "Operating System",
         "faculty": "Dr. Aakriti Jain (AJ)",
-        "contact": "7987622028",
+        "subject_taught": "Operating System (AL-501)",
+        "contact": "Operating System (AL-501)",
         "lab_room": "Lab 2B CV Raman Block",
         "color": "#C5F82A"
     },
@@ -47,7 +48,8 @@ SUBJECTS_CATALOG = {
         "code": "AL-502",
         "title": "Database Management System",
         "faculty": "Prof. Richa Sarathe (RSa)",
-        "contact": "6260941617",
+        "subject_taught": "Database Management System (AL-502)",
+        "contact": "Database Management System (AL-502)",
         "lab_room": "Lab 3B CV Raman Block",
         "color": "#38BDF8"
     },
@@ -55,7 +57,8 @@ SUBJECTS_CATALOG = {
         "code": "AL-503 (B)",
         "title": "Departmental Elective (Deep Learning)",
         "faculty": "Prof. Chayank Deshmukh (CD)",
-        "contact": "7354496407",
+        "subject_taught": "Deep Learning (AL-503)",
+        "contact": "Deep Learning (AL-503)",
         "lab_room": "Lab 2B / 4A CV Raman Block",
         "color": "#A78BFA"
     },
@@ -63,7 +66,8 @@ SUBJECTS_CATALOG = {
         "code": "AL-504 (B)",
         "title": "Open Elective (Natural Language Processing)",
         "faculty": "Prof. Arbind Kumar Singh (AK)",
-        "contact": "7987606449",
+        "subject_taught": "Natural Language Processing (AL-504)",
+        "contact": "Natural Language Processing (AL-504)",
         "lab_room": "Lab 3B CV Raman Block",
         "color": "#FB923C"
     },
@@ -71,7 +75,8 @@ SUBJECTS_CATALOG = {
         "code": "AL-505",
         "title": "Dept Elective Lab (Deep Learning)",
         "faculty": "Prof. Chayank Deshmukh (CD)",
-        "contact": "7354496407",
+        "subject_taught": "Deep Learning Lab (AL-505)",
+        "contact": "Deep Learning Lab (AL-505)",
         "lab_room": "Lab 2B / 4A CV Raman Block",
         "color": "#E879F9"
     },
@@ -79,7 +84,8 @@ SUBJECTS_CATALOG = {
         "code": "AL-506",
         "title": "Open Elective Lab (NLP)",
         "faculty": "Prof. Arbind Kumar Singh (AK)",
-        "contact": "7987606449",
+        "subject_taught": "NLP Lab (AL-506)",
+        "contact": "NLP Lab (AL-506)",
         "lab_room": "Lab 3B CV Raman Block",
         "color": "#4ADE80"
     },
@@ -87,7 +93,8 @@ SUBJECTS_CATALOG = {
         "code": "AL-507",
         "title": "Evaluation of Internship-II",
         "faculty": "Prof. Nandita Tiwari (NT)",
-        "contact": "6260801311",
+        "subject_taught": "Internship Evaluation-II (AL-507)",
+        "contact": "Internship Evaluation-II (AL-507)",
         "lab_room": "Room 4-B9 CV Raman Block",
         "color": "#FACC15"
     },
@@ -95,7 +102,8 @@ SUBJECTS_CATALOG = {
         "code": "AL-508",
         "title": "Minor Project-I",
         "faculty": "Prof. Richa Sarathe (RSa)",
-        "contact": "6260941617",
+        "subject_taught": "Minor Project-I (AL-508)",
+        "contact": "Minor Project-I (AL-508)",
         "lab_room": "Lab 2B / 4B CV Raman Block",
         "color": "#2DD4BF"
     },
@@ -103,7 +111,8 @@ SUBJECTS_CATALOG = {
         "code": "Mentor/Library",
         "title": "Mentorship & Library Session",
         "faculty": "Dr. Aakriti Jain (AJ)",
-        "contact": "7987622028",
+        "subject_taught": "Mentorship & Library Session",
+        "contact": "Mentorship & Library Session",
         "lab_room": "Central Library / Room 4-B9",
         "color": "#94A3B8"
     },
@@ -111,7 +120,8 @@ SUBJECTS_CATALOG = {
         "code": "Minor Project Lab",
         "title": "Minor Project Lab Work",
         "faculty": "Prof. Richa Sarathe (RSa)",
-        "contact": "6260941617",
+        "subject_taught": "Minor Project Lab Work (AL-508)",
+        "contact": "Minor Project Lab Work (AL-508)",
         "lab_room": "Lab 4A CV Raman Block",
         "color": "#2DD4BF"
     }
@@ -284,6 +294,7 @@ class TimetableManager:
                 "distracted_away": 2
             })
 
+            subject_taught_str = catalog_info.get("subject_taught", catalog_info.get("title", "LNCT Academic Subject"))
             return {
                 "is_active": True,
                 "is_off_hours": False,
@@ -296,7 +307,8 @@ class TimetableManager:
                 "subject_code": sub_code,
                 "subject_title": catalog_info["title"],
                 "faculty": catalog_info["faculty"],
-                "faculty_contact": catalog_info["contact"],
+                "faculty_contact": subject_taught_str,
+                "faculty_subject": subject_taught_str,
                 "room": catalog_info.get("lab_room", class_entry["room"]),
                 "accent_color": catalog_info.get("color", "#C5F82A"),
                 "attention_rate": stats_for_sub.get("attention_rate", 85.0),
@@ -321,7 +333,8 @@ class TimetableManager:
             "subject_code": "STANDBY",
             "subject_title": "Classroom Standby (College Hours: 10:30 AM - 05:00 PM)",
             "faculty": "LNCT Academic Schedule",
-            "faculty_contact": "LNCT Academic Office",
+            "faculty_contact": "Department of CSE AIML",
+            "faculty_subject": "Department of CSE AIML",
             "room": "Room 4-B9 / CV Raman Block",
             "accent_color": "#94A3B8",
             "attention_rate": self.stats.get("AL-501", {}).get("attention_rate", 84.2),

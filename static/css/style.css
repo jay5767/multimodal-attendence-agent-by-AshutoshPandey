@@ -147,7 +147,7 @@ a {
 /* About Developer Hero with Photo */
 .about-hero-grid {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 200px 1fr;
   gap: 36px;
   align-items: center;
   margin-bottom: 40px;
@@ -164,10 +164,58 @@ a {
   }
 }
 
+.developer-avatar-box {
+  position: relative;
+  width: 175px;
+  height: 175px;
+  margin: 0 auto;
+  border-radius: 20px;
+  background: radial-gradient(circle at center, rgba(197, 248, 42, 0.09) 0%, rgba(13, 19, 15, 0.95) 100%);
+  border: 2px solid rgba(197, 248, 42, 0.45);
+  box-shadow: 0 0 25px rgba(197, 248, 42, 0.22);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+}
+
+.developer-avatar-box:hover {
+  transform: translateY(-4px) scale(1.02);
+  border-color: var(--accent);
+  box-shadow: 0 0 35px rgba(197, 248, 42, 0.38);
+}
+
+.developer-avatar-img {
+  width: 140px;
+  height: 140px;
+  object-fit: contain;
+  display: block;
+}
+
+.developer-avatar-badge {
+  position: absolute;
+  bottom: 6px;
+  background: rgba(10, 10, 10, 0.88);
+  backdrop-filter: blur(8px);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(197, 248, 42, 0.35);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
 .developer-photo-wrap {
   position: relative;
   width: 100%;
-  max-width: 280px;
+  max-width: 180px;
+  height: 180px;
   margin: 0 auto;
   border-radius: 20px;
   overflow: hidden;

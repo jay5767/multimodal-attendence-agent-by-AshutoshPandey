@@ -157,7 +157,10 @@ function updateActivePeriodUI(p) {
   if (subCode) subCode.innerText = p.subject_code;
   if (subTitle) subTitle.innerText = p.subject_title;
   if (faculty) faculty.innerText = p.faculty;
-  if (contact) contact.innerText = p.faculty_contact;
+  if (contact) {
+    const teachingStr = p.faculty_subject || p.faculty_contact || p.subject_title;
+    contact.innerText = teachingStr.startsWith("📚") ? teachingStr : `📚 Teaching: ${teachingStr}`;
+  }
   if (room) room.innerText = p.room;
   if (slot) slot.innerText = p.time_slot;
   if (remaining) remaining.innerText = p.time_remaining;
@@ -342,13 +345,14 @@ function renderSubjectCatalog(data) {
     row.style.border = "var(--border-subtle)";
     row.style.borderRadius = "8px";
 
+    const subjectTaught = sub.subject_taught || sub.title || sub.code;
     row.innerHTML = `
       <div>
         <div style="font-weight:700; color:#FFF; font-size:13px;">${sub.code} - ${sub.title}</div>
         <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">${sub.faculty} &bull; ${sub.lab_room}</div>
       </div>
       <div style="text-align:right;">
-        <a href="tel:${sub.contact}" style="color:var(--accent); font-size:12px; font-weight:600; text-decoration:none;">📞 ${sub.contact}</a>
+        <span style="color:var(--accent); font-size:12px; font-weight:600; background:rgba(197, 248, 42, 0.1); border:1px solid rgba(197, 248, 42, 0.25); padding:4px 10px; border-radius:6px; display:inline-block;">📚 ${subjectTaught}</span>
       </div>
     `;
     container.appendChild(row);
