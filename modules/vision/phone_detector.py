@@ -153,78 +153,84 @@ class PhoneDetector:
         except Exception:
             return []
 
-    def match_phone_to_face(
-        self,
-        face_bbox: List[int],
-        phones: List[Dict[str, Any]],
-        pitch: float = 0.0,
-        frame_shape: Tuple[int, int] = (480, 640),
-        track_id: int = 1
-    ) -> Tuple[bool, Optional[Dict[str, Any]], str]:
-        """
-        Determines if a detected phone belongs to a student face bounding box.
-        Includes temporal debounce smoothing to completely eliminate 1-frame glitches.
-        """
-        if not hasattr(self, "track_phone_state"):
-            self.track_phone_state = {}
-
-        state = self.track_phone_state.setdefault(track_id, {
-            "count": 0,
-            "active": False,
-            "cooldown": 0,
-            "phone": None,
-            "reason": ""
-        })
-
-        fx1, fy1, fx2, fy2 = face_bbox
-        fw = fx2 - fx1
-        fh = fy2 - fy1
-        fcx = (fx1 + fx2) / 2.0
-        fcy = (fy1 + fy2) / 2.0
-
-        # Define student's upper torso / hand interaction zone
-        torso_x1 = fx1 - fw * 1.2
-        torso_x2 = fx2 + fw * 1.2
-        torso_y1 = fy1
-        torso_y2 = fy2 + fh * 3.2
-
-        candidate_phone = None
-        for phone in phones:
-            px1, py1, px2, py2 = phone["bbox"]
-            pcx = (px1 + px2) / 2.0
-            pcy = (py1 + py2) / 2.0
-
-            x_overlap = max(0, min(torso_x2, px2) - max(torso_x1, px1))
-            y_overlap = max(0, min(torso_y2, py2) - max(torso_y1, py1))
-            dist_x = abs(fcx - pcx)
-            dist_y = pcy - fcy
-
-            if (x_overlap > 0 and y_overlap > 0) or (dist_x < fw * 1.6 and 0 < dist_y < fh * 3.5):
-                candidate_phone = phone
-                break
-
-        # Anti-glitch debounce: require 2 consecutive frames to trigger, hold for 10 frames (~1s)
-        if candidate_phone is not None:
-            state["count"] += 1
-            if state["count"] >= 2:
-                state["active"] = True
-                state["cooldown"] = 10
-                state["phone"] = candidate_phone
-                state["reason"] = f"Cell Phone Detected ({candidate_phone['confidence']:.2f})"
-        else:
-            state["count"] = max(0, state["count"] - 1)
-            if state["cooldown"] > 0:
-                state["cooldown"] -= 1
-            else:
-                state["active"] = False
-                state["phone"] = None
-                state["reason"] = ""
-
-        return state["active"], state["phone"], state["reason"]
-
-    def cleanup(self, active_track_ids: List[int]):
-        """Remove tracks that are no longer active."""
-        if hasattr(self, "track_phone_state"):
-            for tid in list(self.track_phone_state.keys()):
-                if tid not in active_track_ids:
+    def match_phone_to_face(
+        self,
+        face_bbox: List[int],
+        phones: List[Dict[str, Any]],
+        pitch: float = 0.0,
+        frame_shape: Tuple[int, int] = (480, 640),
+        track_id: int = 1
+    ) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+        """
+        Determines if a detected phone belongs to an active student distraction.
+        Eliminates false triggers when phone is merely resting on desk while student attends class.
+        """
+        if not hasattr(self, "track_phone_state"):
+            self.track_phone_state = {}
+
+        state = self.track_phone_state.setdefault(track_id, {
+            "count": 0,
+            "active": False,
+            "cooldown": 0,
+            "phone": None,
+            "reason": ""
+        })
+
+        fx1, fy1, fx2, fy2 = face_bbox
+        fw = fx2 - fx1
+        fh = fy2 - fy1
+        fcx = (fx1 + fx2) / 2.0
+        fcy = (fy1 + fy2) / 2.0
+
+        # Active phone interaction zone:
+        # A phone is active distraction if:
+        # 1. Held up in front of chest/face (dist_y < fh * 2.0), OR
+        # 2. Down on desk/lap (dist_y < fh * 3.2) AND student's head is tilted down at it (pitch < -10 deg)
+        candidate_phone = None
+        for phone in phones:
+            px1, py1, px2, py2 = phone["bbox"]
+            pcx = (px1 + px2) / 2.0
+            pcy = (py1 + py2) / 2.0
+
+            dist_x = abs(fcx - pcx)
+            dist_y = pcy - fcy
+            in_reach_x = dist_x < (fw * 1.8)
+
+            if in_reach_x and dist_y > 0:
+                if dist_y < (fh * 2.0):
+                    candidate_phone = phone
+                    break
+                elif dist_y < (fh * 3.2) and pitch < -10.0:
+                    candidate_phone = phone
+                    break
+
+        # Anti-glitch debounce: require 2 consecutive frames to trigger, hold for 4 frames (~0.4s)
+        if candidate_phone is not None:
+            state["count"] += 1
+            if state["count"] >= 2:
+                state["active"] = True
+                state["cooldown"] = 4
+                state["phone"] = candidate_phone
+                state["reason"] = f"Cell Phone Detected ({candidate_phone['confidence']:.2f})"
+        else:
+            state["count"] = max(0, state["count"] - 1)
+            if state["cooldown"] > 0:
+                state["cooldown"] -= 1
+            else:
+                state["active"] = False
+                state["phone"] = None
+                state["reason"] = ""
+
+        return state["active"], state["phone"], state["reason"]
+
+    def cleanup(self, active_track_ids: List[int]):
+
+        """Remove tracks that are no longer active."""
+
+        if hasattr(self, "track_phone_state"):
+
+            for tid in list(self.track_phone_state.keys()):
+
+                if tid not in active_track_ids:
+
                     del self.track_phone_state[tid]

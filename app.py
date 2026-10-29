@@ -610,6 +610,9 @@ def process_single_frame(frame: np.ndarray) -> dict:
 
     fusion_engine.feed_frame_metrics(attention_ratio, avg_mov, avg_inact, audio_metrics)
     instant_gauge = fusion_engine.calculate_current_instant_score()
+    if faces_payload:
+        learner_avg = sum(f["engagement"] for f in faces_payload) / len(faces_payload)
+        instant_gauge = round(0.70 * learner_avg + 0.30 * instant_gauge, 1)
     state["last_gauge_score"] = instant_gauge
 
     active_session = attendance_mgr.get_active_session()

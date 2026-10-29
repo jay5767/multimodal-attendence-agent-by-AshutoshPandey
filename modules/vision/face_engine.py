@@ -176,18 +176,19 @@ class FaceEngine:
     @staticmethod
     def _validate_face_geometry(landmarks: Any, bbox: Tuple[int, int, int, int]) -> bool:
         """
-        Strict geometric validation: verifies landmarks form a legitimate human face.
-        Rejects wall textures, shadows, and noise by verifying eyes, nose, and mouth alignment.
+        Validates landmarks form a plausible human head while allowing
+        natural classroom head movements, tilting, glancing, and partial hand/phone occlusion.
+        Blocks wall textures, door frames, and shadows.
         """
         if landmarks is None or len(landmarks) < 5:
             return False
         x1, y1, x2, y2 = bbox
         bw = x2 - x1
         bh = y2 - y1
-        if bw < 50 or bh < 50:
+        if bw < 35 or bh < 35:
             return False
         aspect = bh / float(bw)
-        if aspect < 0.70 or aspect > 1.90:
+        if aspect < 0.60 or aspect > 2.10:
             return False
 
         try:
@@ -195,27 +196,16 @@ class FaceEngine:
             re, le, nose, rm, lm = kps[0], kps[1], kps[2], kps[3], kps[4]
 
             eye_dist = float(np.linalg.norm(le - re))
-            if eye_dist < bw * 0.18 or eye_dist > bw * 0.75:
+            if eye_dist < bw * 0.10 or eye_dist > bw * 0.88:
                 return False
 
-            # Eyes roughly horizontal (roll within realistic limits)
-            if abs(re[1] - le[1]) > eye_dist * 0.75:
-                return False
-
-            # Eyes must be above nose
+            # Eyes must be in the upper 75% of the face bounding box
             eye_y = (re[1] + le[1]) / 2.0
-            if nose[1] <= eye_y:
+            if eye_y < y1 - bh * 0.15 or eye_y > y1 + bh * 0.75:
                 return False
 
-            # Mouth must be below nose
-            mouth_y = (rm[1] + lm[1]) / 2.0
-            if mouth_y <= nose[1]:
-                return False
-
-            # Nose must be roughly centered between eyes horizontally
-            min_eye_x = min(re[0], le[0]) - bw * 0.20
-            max_eye_x = max(re[0], le[0]) + bw * 0.20
-            if not (min_eye_x <= nose[0] <= max_eye_x):
+            # Nose tip should be below the eye line
+            if nose[1] < eye_y - bh * 0.08:
                 return False
 
             return True
@@ -252,7 +242,7 @@ class FaceEngine:
                     for face in yn_faces:
                         fx, fy, fw, fh = face[0:4]
                         conf = float(face[-1])
-                        if conf < 0.65:
+                        if conf < 0.48:
                             continue
                         x1 = max(0, min(w - 1, int(fx * scale_x)))
                         y1 = max(0, min(h - 1, int(fy * scale_y)))
@@ -260,7 +250,7 @@ class FaceEngine:
                         y2 = max(0, min(h, int((fy + fh) * scale_y)))
                         box_w = x2 - x1
                         box_h = y2 - y1
-                        if box_w < 50 or box_h < 50:
+                        if box_w < 35 or box_h < 35:
                             continue
 
                         landmarks = [
@@ -282,9 +272,8 @@ class FaceEngine:
                             "det_score": float(conf)
                         })
                     deduped = self._nms_dedup(results)
-                    return deduped[:1]
-                else:
-                    return []
+                    if deduped:
+                        return deduped[:1]
             except Exception as e:
                 pass
 

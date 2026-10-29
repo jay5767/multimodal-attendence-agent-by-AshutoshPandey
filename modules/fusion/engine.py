@@ -56,26 +56,25 @@ class MultimodalFusionEngine:
         self.acc_audio_rms.append(rms)
 
     def calculate_current_instant_score(self) -> float:
-        """Computes current real-time gauge score from recent frame samples."""
+        """Computes current real-time gauge score anchored to visual attention."""
         if not self.acc_attention:
-            return 75.0  # Neutral starting score
+            return 85.0
 
         att = float(np.mean(self.acc_attention[-10:]))
-        mov = float(np.mean(self.acc_movement[-10:]))
-        inact = float(np.mean(self.acc_inactivity[-10:]))
-        
-        # Audio component: blend speech ratio with mild boost for active discussion
-        aud_speech = float(np.mean(self.acc_audio_speech[-10:])) if self.acc_audio_speech else 0.1
-        aud_rms = float(np.mean(self.acc_audio_rms[-10:])) if self.acc_audio_rms else 0.01
-        audio_score = min(1.0, (aud_speech * 0.7) + min(0.3, aud_rms * 5.0))
+        aud_speech = float(np.mean(self.acc_audio_speech[-10:])) if self.acc_audio_speech else 0.0
 
-        raw_score = (
-            Config.WEIGHT_ATTENTION * att +
-            Config.WEIGHT_MOVEMENT * mov +
-            Config.WEIGHT_INACTIVITY * (1.0 - inact) +
-            Config.WEIGHT_AUDIO * audio_score
-        )
-        return round(float(np.clip(raw_score * 100.0, 0.0, 100.0)), 1)
+        # Visual attention is the #1 indicator of cognitive presence in lectures
+        # Attentive seated student watching screen gets 85-95%
+        if att >= 0.70:
+            base_score = 82.0 + ((att - 0.70) / 0.30) * 13.0
+            speech_bonus = min(5.0, aud_speech * 10.0)
+            score = base_score + speech_bonus
+        elif att >= 0.40:
+            score = 50.0 + ((att - 0.40) / 0.30) * 25.0
+        else:
+            score = max(15.0, att * 80.0)
+
+        return round(float(np.clip(score, 10.0, 98.0)), 1)
 
     def step_interval_if_due(self, session_id: Optional[int], now_epoch: Optional[float] = None) -> Optional[Dict[str, Any]]:
         """
@@ -98,14 +97,16 @@ class MultimodalFusionEngine:
 
         audio_score = min(1.0, (speech_ratio * 0.7) + min(0.3, rms * 5.0))
 
-        # Core fusion formula
-        engagement = (
-            Config.WEIGHT_ATTENTION * att +
-            Config.WEIGHT_MOVEMENT * mov +
-            Config.WEIGHT_INACTIVITY * (1.0 - inact) +
-            Config.WEIGHT_AUDIO * audio_score
-        ) * 100.0
-        engagement = round(float(np.clip(engagement, 0.0, 100.0)), 1)
+        # Core fusion formula: grounded in visual attention with discussion bonus
+        if att >= 0.70:
+            base_score = 82.0 + ((att - 0.70) / 0.30) * 13.0
+            speech_bonus = min(5.0, speech_ratio * 10.0)
+            engagement = base_score + speech_bonus
+        elif att >= 0.40:
+            engagement = 50.0 + ((att - 0.40) / 0.30) * 25.0
+        else:
+            engagement = max(15.0, att * 80.0)
+        engagement = round(float(np.clip(engagement, 10.0, 98.0)), 1)
 
         # Baseline management
         if len(self.intervals_history) == 0:
